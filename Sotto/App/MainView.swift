@@ -93,6 +93,8 @@ struct MainView: View {
             NavigationStack { CompareView() }
         case .personas:
             NavigationStack { PersonasView() }
+        case .tools:
+            NavigationStack { ToolsView() }
         case .settings:
             NavigationStack { SettingsView() }
         case .onboarding:

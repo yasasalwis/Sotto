@@ -80,6 +80,9 @@ public struct LlamaSamplingOptions: Sendable, Hashable {
     public var maxTokens: Int = 1024
     /// Fixed seed for reproducible sampling. `nil` draws a fresh random seed.
     public var seed: UInt32? = nil
+    /// Render special tokens (such as a model's `<tool_call>` marker) as text instead of dropping
+    /// them. End-of-generation tokens still stop the stream and are never emitted.
+    public var rendersSpecialTokens: Bool = false
 
     public init() {}
 }

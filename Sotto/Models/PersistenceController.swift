@@ -3,7 +3,7 @@ import SwiftData
 import os
 
 enum PersistenceController {
-    static let schema = Schema([Conversation.self, Message.self, Persona.self, InstalledModel.self, ModelDownload.self])
+    static let schema = Schema([Conversation.self, Message.self, Persona.self, InstalledModel.self, ModelDownload.self, ToolDefinition.self])
 
     static func storeURL(in baseDirectory: URL) -> URL {
         baseDirectory.appendingPathComponent("Sotto.store")
@@ -25,18 +25,39 @@ enum PersistenceController {
         return container
     }
 
-    /// Inserts the built-in personas on first launch. Idempotent.
+    /// Inserts the built-in personas and tools on first launch. Idempotent: built-in tools added
+    /// in a later version appear without disturbing the user's own tools.
     static func seedIfNeeded(context: ModelContext) {
-        let count = (try? context.fetchCount(FetchDescriptor<Persona>())) ?? 0
-        guard count == 0 else { return }
-        for persona in Persona.builtInSeeds() {
-            context.insert(persona)
+        var changed = false
+        let personaCount = (try? context.fetchCount(FetchDescriptor<Persona>())) ?? 0
+        if personaCount == 0 {
+            for persona in Persona.builtInSeeds() {
+                context.insert(persona)
+            }
+            changed = true
         }
+        let existingTools = (try? context.fetch(FetchDescriptor<ToolDefinition>())) ?? []
+        let existingByName = Dictionary(existingTools.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        for seed in ToolDefinition.builtInSeeds() {
+            guard let existing = existingByName[seed.name] else {
+                context.insert(seed)
+                changed = true
+                continue
+            }
+            // Improve the wording we ship, but never overwrite a description the user rewrote.
+            if existing.isBuiltIn, existing.summary != seed.summary, existing.summary == (existing.seededSummary ?? existing.summary) {
+                existing.summary = seed.summary
+                existing.seededSummary = seed.summary
+                existing.updatedAt = .now
+                changed = true
+            }
+        }
+        guard changed else { return }
         do {
             try context.save()
-            Log.persistence.info("Seeded built-in personas")
+            Log.persistence.info("Seeded built-in personas and tools")
         } catch {
-            Log.persistence.error("Seeding personas failed: \(error.localizedDescription, privacy: .public)")
+            Log.persistence.error("Seeding failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -47,6 +68,7 @@ enum PersistenceController {
         try context.delete(model: ModelDownload.self)
         try context.delete(model: InstalledModel.self)
         try context.delete(model: Persona.self)
+        try context.delete(model: ToolDefinition.self)
         try context.save()
     }
 

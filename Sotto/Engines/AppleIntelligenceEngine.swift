@@ -48,7 +48,7 @@ final class AppleIntelligenceEngine: InferenceEngine {
         TokenEstimator.estimate(text)
     }
 
-    func generate(_ request: GenerationRequest) -> AsyncThrowingStream<GenerationEvent, Error> {
+    func generate(_ request: GenerationRequest, toolRunner: ToolRunner?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
                 do {
@@ -58,8 +58,23 @@ final class AppleIntelligenceEngine: InferenceEngine {
                     guard let last = request.turns.last, last.role == .user else {
                         throw EngineError.noUserMessage
                     }
-                    let transcript = Self.transcript(systemPrompt: request.systemPrompt, history: request.turns.dropLast())
-                    let session = LanguageModelSession(model: .default, transcript: transcript)
+                    let transcript = Self.transcript(
+                        systemPrompt: request.systemPrompt,
+                        history: request.turns.dropLast(),
+                        toolRule: request.tools.isEmpty ? nil : ToolPromptFormatter.usageRule
+                    )
+                    // The system model calls tools itself; the runner reports each call to the UI.
+                    let tools: [any Tool] = toolRunner.map { runner in
+                        request.tools.compactMap { spec in
+                            do {
+                                return try AppleDynamicTool(spec: spec, runner: runner)
+                            } catch {
+                                Log.engine.error("Tool \(spec.name, privacy: .public) has an unusable schema: \(error.localizedDescription, privacy: .public)")
+                                return nil
+                            }
+                        }
+                    } ?? []
+                    let session = LanguageModelSession(model: .default, tools: tools, transcript: transcript)
 
                     var options = GenerationOptions()
                     options.temperature = request.sampling.temperature
@@ -117,11 +132,22 @@ final class AppleIntelligenceEngine: InferenceEngine {
         }
     }
 
-    static func transcript(systemPrompt: String?, history: ArraySlice<ChatTurn>) -> Transcript {
+    /// The persona's prompt plus, when tools are offered, the rule about leaving them alone.
+    static func instructionsText(systemPrompt: String?, toolRule: String?) -> String {
+        let base = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return [base.isEmpty ? nil : base, toolRule]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+    }
+
+    /// `toolRule` is added to the instructions when tools are offered; the framework supplies the
+    /// schemas itself, but not the judgement about when to leave them alone.
+    static func transcript(systemPrompt: String?, history: ArraySlice<ChatTurn>, toolRule: String? = nil) -> Transcript {
         var entries: [Transcript.Entry] = []
-        if let systemPrompt, !systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let instructions = instructionsText(systemPrompt: systemPrompt, toolRule: toolRule)
+        if !instructions.isEmpty {
             entries.append(.instructions(Transcript.Instructions(
-                segments: [.text(Transcript.TextSegment(content: systemPrompt))],
+                segments: [.text(Transcript.TextSegment(content: instructions))],
                 toolDefinitions: []
             )))
         }

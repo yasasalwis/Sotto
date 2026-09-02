@@ -8,6 +8,9 @@ Sotto has no servers. "Operating" it means building, shipping and helping users 
 2. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in the Sotto target.
 3. `xcodebuild -scheme Sotto -destination 'platform=macOS,arch=arm64' test` and the iOS equivalent must be green.
 4. Archive from Xcode (Product › Archive) for macOS and iOS; distribute through TestFlight / App Store or Developer ID.
+   For an App Store submission, work through [APP_REVIEW.md](APP_REVIEW.md) — it carries the
+   App Store Connect answers, the review notes and the pre-archive checks. Archive from
+   **Release**: Debug defines `SOTTO_SHELL_TOOL`, which must never reach App Store Connect.
 5. Tag the commit `vX.Y.Z`.
 
 Rollback: re-submit the previous archive. There is no data migration to undo unless a release changed the SwiftData schema; keep schema changes additive (new optional fields) so older builds still open the store.
@@ -31,9 +34,16 @@ Edit `Sotto/Resources/Catalog/models.json`. Every entry needs a working `https:/
 - Store won't open: the app falls back to an in-memory store and shows an alert. The store is at `~/Library/Containers/lk.eonix.Sotto/Data/Library/Application Support/Sotto/Sotto.store` (macOS). Move it aside to recover.
 - Crash diagnostics: only if the user enabled Crash reports; JSON files in `.../Sotto/Diagnostics/`, listed in Settings › Advanced.
 
+## Diagnosing a misbehaving tool
+
+1. Open Tools, select the tool, and press **Run once**. That runs it with no model involved, which separates a broken tool from a model that calls it badly.
+2. In the log (category `engine`), each run appears as `Tool <name> succeeded|failed`. Prompts and results are not logged.
+3. If a GGUF model never calls a tool, check that its reply is not being shown as raw JSON: that means the call block was not recognised. Capture the reply and add a case to `ToolCallScannerTests`.
+4. HTTPS tools that fail with a status code usually need a header; shell tools that time out are over the 20 second limit.
+
 ## Rotating secrets
 
-There are none. The app has no API keys, tokens or service credentials.
+The app has none of its own. A user may put an API key in the headers of an HTTPS tool; those live in the app's database with the rest of their data and are removed by Settings › Privacy › Erase all data.
 
 ## Erasing data
 

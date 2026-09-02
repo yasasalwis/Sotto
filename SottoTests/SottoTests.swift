@@ -124,6 +124,33 @@ struct CatalogTests {
         }
         #expect(Set(catalog.entries.map(\.id)).count == catalog.entries.count)
     }
+
+    /// The host pin is enforced when a catalog is decoded, not only asserted about the bundled
+    /// file, so a tampered or future remote catalog cannot redirect a download elsewhere.
+    @Test func decodingRejectsAnEntryThatLeavesThePinnedHost() throws {
+        func catalogJSON(url: String) -> Data {
+            Data("""
+            {"version":1,"updatedAt":"2026-09-03","entries":[{
+              "id":"x","name":"X","family":"X","publisher":"X","repository":"a/b",
+              "fileName":"x.gguf","url":"\(url)","sizeBytes":200000000,"quantization":"Q4_K_M",
+              "parameterLabel":"1B","contextLength":4096,"license":"MIT","summary":"x"}]}
+            """.utf8)
+        }
+
+        #expect(throws: Never.self) {
+            try ModelCatalog.decode(catalogJSON(url: "https://huggingface.co/a/b/resolve/main/x.gguf"))
+        }
+        #expect(throws: CatalogError.self) {
+            try ModelCatalog.decode(catalogJSON(url: "https://evil.example.com/x.gguf"))
+        }
+        #expect(throws: CatalogError.self) {
+            try ModelCatalog.decode(catalogJSON(url: "http://huggingface.co/a/b/resolve/main/x.gguf"))
+        }
+        // A lookalike host must not pass the suffix check.
+        #expect(throws: CatalogError.self) {
+            try ModelCatalog.decode(catalogJSON(url: "https://nothuggingface.co/x.gguf"))
+        }
+    }
 }
 
 @MainActor
@@ -228,12 +255,23 @@ struct SettingsStoreTests {
     @Test func defaultsArePrivacyPreserving() {
         let suite = UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!
         let store = SettingsStore(defaults: suite)
-        #expect(store.privateCloudCompute == false)
         #expect(store.crashReports == false)
         #expect(store.catalogUpdates == false)
         #expect(store.storeConversations == true)
         #expect(store.wifiOnlyDownloads == true)
+        #expect(store.toolsEnabled == true)
         #expect(store.bytesSentThisMonth == 0)
+    }
+
+    @Test func launchArgumentStringsAreReadAsFlags() {
+        let suite = UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!
+        // The argument domain hands over strings, which a plain `as? Bool` cast would miss.
+        suite.set("NO", forKey: SettingsStore.Key.storeConversations.rawValue)
+        suite.set("YES", forKey: SettingsStore.Key.requireAppLock.rawValue)
+        let store = SettingsStore(defaults: suite)
+        #expect(store.storeConversations == false)
+        #expect(store.requireAppLock == true)
+        #expect(SettingsStore.bool(suite, .crashReports, default: true) == true)
     }
 
     @Test func byteAccountingRollsOverMonthly() {

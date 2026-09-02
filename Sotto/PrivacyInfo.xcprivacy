@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Sotto has no account, no server and no analytics. Inference runs on the device.
+	  The only outbound traffic is a model download the person starts, the optional
+	  weekly catalog check, and any HTTPS tool the person configures themselves.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- SettingsStore, ModelRegistry and CatalogRefresher read and write only Sotto's own defaults. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  DeviceCapabilities.freeDiskBytes is read before a model download or import
+			  (85F4.1) and shown in onboarding and the model library (E174.1).
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>85F4.1</string>
+				<string>E174.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  Diagnostics lists crash reports inside the app container (DDA9.1). ModelStore and
+			  AttachmentReader stat files the person picked in the document picker or dropped on
+			  the window, to check size before reading them (C617.1).
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>DDA9.1</string>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -59,6 +59,15 @@ struct SottoApp: App {
         }
         .defaultSize(width: 1180, height: 760)
 
+        Window("Tools", id: WindowID.tools) {
+            ToolsView()
+                .environment(services)
+                .modelContainer(services.container)
+                .preferredColorScheme(.light)
+                .frame(minWidth: 820, minHeight: 560)
+        }
+        .defaultSize(width: 1180, height: 760)
+
         Window("Presets", id: WindowID.personas) {
             PersonasView()
                 .environment(services)
@@ -83,6 +92,7 @@ enum WindowID {
     static let library = "library"
     static let compare = "compare"
     static let personas = "personas"
+    static let tools = "tools"
 }
 
 #if os(iOS)

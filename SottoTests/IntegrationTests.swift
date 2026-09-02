@@ -78,6 +78,7 @@ struct IntegrationTests {
             case .promptReady(let tokens): promptTokens = tokens
             case .delta(let delta): text += delta
             case .replace(let full): text = full
+            case .toolCall, .toolResult: break
             case .finished(let result): outcome = result
             }
         }

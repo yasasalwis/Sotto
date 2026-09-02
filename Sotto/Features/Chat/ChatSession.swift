@@ -3,9 +3,27 @@ import Observation
 import SwiftData
 import os
 
+enum ToolApprovalDecision: Sendable {
+    case allowOnce
+    case allowAlways
+    case deny
+}
+
+/// A tool call waiting for the user's decision, surfaced as a card in the chat.
+struct PendingToolApproval: Identifiable {
+    let id: UUID
+    let toolName: String
+    let displayName: String
+    let kind: ToolKind
+    let argumentsSummary: String
+    /// What actually happens: the address to be called, or the command to be run.
+    let effect: String
+    let resolve: (ToolApprovalDecision) -> Void
+}
+
 /// Drives one conversation: composing, sending, streaming, retrying and switching models.
 @Observable
-final class ChatSession {
+final class ChatSession: ToolRunner {
     let conversation: Conversation
     @ObservationIgnored let services: AppServices
     @ObservationIgnored let context: ModelContext
@@ -14,11 +32,15 @@ final class ChatSession {
     var attachments: [Attachment] = []
     private(set) var streamingMessageID: UUID?
     private(set) var isGenerating = false
+    /// Set while a tool call is waiting for approval.
+    var pendingToolApproval: PendingToolApproval?
     private(set) var contextTokensUsed = 0
     private(set) var droppedTurns = 0
     var lastError: String?
 
     @ObservationIgnored private var generationTask: Task<Void, Never>?
+    @ObservationIgnored private var currentAssistant: Message?
+    @ObservationIgnored private var toolCallsThisTurn = 0
 
     init(conversation: Conversation, services: AppServices, context: ModelContext) {
         self.conversation = conversation
@@ -32,6 +54,15 @@ final class ChatSession {
         var descriptor = FetchDescriptor<Persona>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
+    }
+
+    /// Tools this conversation may use: enabled, runnable here, and permitted by the persona.
+    var availableTools: [ToolDefinition] {
+        guard services.settings.toolsEnabled else { return [] }
+        let descriptor = FetchDescriptor<ToolDefinition>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt)])
+        let usable = ((try? context.fetch(descriptor)) ?? []).filter(\.isUsable)
+        guard let persona else { return usable }
+        return persona.tools(from: usable)
     }
 
     var installedModels: [InstalledModel] {
@@ -84,7 +115,15 @@ final class ChatSession {
     }
 
     func stop() {
+        pendingToolApproval?.resolve(.deny)
         generationTask?.cancel()
+    }
+
+    /// Answers a pending approval card.
+    func resolveToolApproval(_ decision: ToolApprovalDecision) {
+        guard let pending = pendingToolApproval else { return }
+        pendingToolApproval = nil
+        pending.resolve(decision)
     }
 
     /// Regenerates an assistant message in place with the same model and context.
@@ -181,9 +220,14 @@ final class ChatSession {
             }
             droppedTurns = built.droppedTurns
             var promptTokens = built.estimatedPromptTokens
-            Log.chat.info("Generating with \(engine.displayName, privacy: .public): \(built.request.turns.count) turns, ~\(promptTokens) prompt tokens, dropped \(built.droppedTurns)")
+            let tools = availableTools
+            var request = built.request
+            request.tools = tools.map(\.spec)
+            currentAssistant = assistant
+            toolCallsThisTurn = 0
+            Log.chat.info("Generating with \(engine.displayName, privacy: .public): \(built.request.turns.count) turns, ~\(promptTokens) prompt tokens, dropped \(built.droppedTurns), \(tools.count) tools")
 
-            for try await event in engine.generate(built.request) {
+            for try await event in engine.generate(request, toolRunner: tools.isEmpty ? nil : self) {
                 switch event {
                 case .promptReady(let tokens):
                     if let tokens { promptTokens = tokens }
@@ -191,6 +235,9 @@ final class ChatSession {
                     assistant.text += delta
                 case .replace(let text):
                     assistant.text = text
+                case .toolCall, .toolResult:
+                    // The runner below records the call; nothing extra to do here.
+                    break
                 case .finished(let outcome):
                     assistant.latencySeconds = outcome.totalSeconds
                     assistant.tokensPerSecond = outcome.tokensPerSecond
@@ -216,8 +263,122 @@ final class ChatSession {
             lastError = error.localizedDescription
             Log.chat.error("Generation failed: \(error.localizedDescription, privacy: .public)")
         }
+        pendingToolApproval?.resolve(.deny)
+        pendingToolApproval = nil
+        currentAssistant = nil
         conversation.updatedAt = .now
         save()
+    }
+
+    // MARK: - ToolRunner
+
+    /// Resolves the tool, asks for approval when required, runs it and records the outcome on the
+    /// assistant message being produced.
+    func run(_ call: ToolCallRequest) async -> ToolRunResult {
+        let tools = availableTools
+        guard let definition = tools.first(where: { $0.name == call.name }) else {
+            let names = tools.map(\.name).joined(separator: ", ")
+            Log.chat.notice("Model asked for unknown tool \(call.name, privacy: .public)")
+            return ToolRunResult(
+                text: "Error: there is no tool called “\(call.name)”.\(names.isEmpty ? "" : " Available tools: \(names).")",
+                success: false, denied: false, bytesSent: 0, durationSeconds: 0
+            )
+        }
+        guard toolCallsThisTurn < ToolDefinition.maximumCallsPerTurn else {
+            return ToolRunResult(
+                text: "Error: this reply has already used its \(ToolDefinition.maximumCallsPerTurn) tool calls. Answer with what you have.",
+                success: false, denied: false, bytesSent: 0, durationSeconds: 0
+            )
+        }
+        toolCallsThisTurn += 1
+
+        var record = ToolCallRecord(
+            toolName: definition.name,
+            displayName: definition.displayName,
+            argumentsJSON: call.argumentsJSON,
+            status: definition.approval == .askEveryTime ? .awaitingApproval : .running
+        )
+        appendToolRecord(record)
+
+        if definition.approval == .askEveryTime {
+            let decision = await requestApproval(for: definition, call: call)
+            switch decision {
+            case .deny:
+                record.status = .denied
+                record.resultText = "You declined this tool call."
+                updateToolRecord(record)
+                save()
+                Log.chat.info("Tool \(definition.name, privacy: .public) declined by the user")
+                return .denied()
+            case .allowAlways:
+                definition.approval = .automatic
+                definition.updatedAt = .now
+            case .allowOnce:
+                break
+            }
+            record.status = .running
+            updateToolRecord(record)
+        }
+
+        let executor = ToolExecutor(settings: services.settings, context: context)
+        let result = await executor.execute(definition, arguments: ToolExecutor.decodeArguments(call.argumentsJSON))
+        definition.usageCount += 1
+        definition.updatedAt = .now
+        record.status = result.success ? .succeeded : .failed
+        record.resultText = result.text
+        record.durationSeconds = result.durationSeconds
+        record.bytesSent = result.bytesSent
+        updateToolRecord(record)
+        save()
+        return result
+    }
+
+    private func requestApproval(for definition: ToolDefinition, call: ToolCallRequest) async -> ToolApprovalDecision {
+        let arguments = ToolExecutor.decodeArguments(call.argumentsJSON)
+        let effect: String
+        switch definition.kind {
+        case .builtIn:
+            effect = "Runs on this device."
+        case .webSearch:
+            let query = ToolTemplate.stringValue(arguments["query"]) ?? ""
+            let site = definition.webSearchConfig?.site ?? ""
+            effect = "Search Google for “\(query)”" + (site.isEmpty ? "" : " on \(site)")
+        case .httpRequest:
+            let url = ToolTemplate.substitute(definition.httpConfig?.urlTemplate ?? "", arguments: arguments) { $0 }
+            effect = "\(definition.httpConfig?.method.uppercased() ?? "GET") \(url)"
+        case .shellCommand:
+            effect = ToolTemplate.substitute(definition.shellConfig?.command ?? "", arguments: arguments) { $0 }
+        }
+        return await withCheckedContinuation { continuation in
+            let box = ApprovalBox(continuation)
+            pendingToolApproval = PendingToolApproval(
+                id: call.id,
+                toolName: definition.name,
+                displayName: definition.displayName,
+                kind: definition.kind,
+                argumentsSummary: ToolCallRecord(toolName: definition.name, displayName: definition.displayName, argumentsJSON: call.argumentsJSON).argumentsSummary,
+                effect: effect,
+                resolve: { decision in box.resume(decision) }
+            )
+        }
+    }
+
+    private func appendToolRecord(_ record: ToolCallRecord) {
+        guard let assistant = currentAssistant else { return }
+        var records = assistant.toolCalls
+        records.append(record)
+        assistant.toolCalls = records
+    }
+
+    private func updateToolRecord(_ record: ToolCallRecord) {
+        guard let assistant = currentAssistant else { return }
+        var records = assistant.toolCalls
+        if let index = records.firstIndex(where: { $0.id == record.id }) {
+            records[index] = record
+        } else {
+            records.append(record)
+        }
+        assistant.toolCalls = records
     }
 
     private func save() {
@@ -238,6 +399,24 @@ final class ChatSession {
             return String(cut[..<space]) + "…"
         }
         return String(cut) + "…"
+    }
+
+    /// A continuation may only be resumed once; the card and `stop()` can both answer it.
+    private final class ApprovalBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<ToolApprovalDecision, Never>?
+
+        init(_ continuation: CheckedContinuation<ToolApprovalDecision, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume(_ decision: ToolApprovalDecision) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: decision)
+        }
     }
 
     static func estimateHistoryTokens(_ conversation: Conversation) -> Int {

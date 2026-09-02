@@ -5,11 +5,64 @@ struct ChatTurn: Hashable, Sendable {
     var content: String
 }
 
+/// A tool as advertised to the model.
+struct ToolSpec: Hashable, Sendable {
+    var name: String
+    var description: String
+    var parameters: [ToolParameter]
+
+    /// JSON-schema object describing the parameters, used by prompt-based tool calling.
+    var parametersSchemaJSON: String {
+        var properties: [String: Any] = [:]
+        for parameter in parameters {
+            properties[parameter.name] = [
+                "type": parameter.type.jsonSchemaType,
+                "description": parameter.summary,
+            ]
+        }
+        let schema: [String: Any] = [
+            "type": "object",
+            "properties": properties,
+            "required": parameters.filter(\.isRequired).map(\.name),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]) else {
+            return "{}"
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// A call the model wants to make.
+struct ToolCallRequest: Hashable, Sendable, Identifiable {
+    var id: UUID = UUID()
+    var name: String
+    var argumentsJSON: String
+}
+
+struct ToolRunResult: Hashable, Sendable {
+    var text: String
+    var success: Bool
+    var denied: Bool
+    var bytesSent: Int64
+    var durationSeconds: Double
+
+    static func denied(_ reason: String = "The user declined to run this tool. Continue without it.") -> ToolRunResult {
+        ToolRunResult(text: reason, success: false, denied: true, bytesSent: 0, durationSeconds: 0)
+    }
+}
+
+/// Executes tool calls for an engine. The chat session implements it so approval prompts and
+/// result recording stay in one place.
+protocol ToolRunner: AnyObject, Sendable {
+    func run(_ call: ToolCallRequest) async -> ToolRunResult
+}
+
 struct GenerationRequest: Hashable, Sendable {
     var systemPrompt: String?
     var turns: [ChatTurn]
     var sampling: SamplingSettings
     var seed: UInt32?
+    var tools: [ToolSpec] = []
 
     var lastUserTurn: ChatTurn? {
         turns.last(where: { $0.role == .user })
@@ -17,6 +70,7 @@ struct GenerationRequest: Hashable, Sendable {
 }
 
 enum FinishReason: String, Sendable, Hashable {
+    case toolLimit
     case complete
     case maxTokens
     case contextFull
@@ -39,6 +93,10 @@ enum GenerationEvent: Hashable, Sendable {
     case delta(String)
     /// The whole text so far should be replaced (used when a streamed snapshot is not a strict extension).
     case replace(String)
+    /// The model asked for a tool and the engine is waiting on the runner.
+    case toolCall(ToolCallRequest)
+    /// The runner answered; generation continues with the result in context.
+    case toolResult(ToolCallRequest, ToolRunResult)
     case finished(GenerationOutcome)
 }
 
@@ -56,6 +114,7 @@ enum EngineError: LocalizedError, Hashable {
     case promptTooLong(tokens: Int, limit: Int)
     case noUserMessage
     case busy
+    case toolFailed(String)
     case underlying(String)
 
     var errorDescription: String? {
@@ -86,6 +145,8 @@ enum EngineError: LocalizedError, Hashable {
             return "There's nothing to respond to yet."
         case .busy:
             return "A response is already being generated."
+        case .toolFailed(let message):
+            return message
         case .underlying(let message):
             return message
         }
@@ -98,5 +159,12 @@ protocol InferenceEngine {
     /// Whether `countTokens` is exact (GGUF tokenizer) or an estimate.
     var countsTokensExactly: Bool { get }
     func countTokens(_ text: String) async throws -> Int
-    func generate(_ request: GenerationRequest) -> AsyncThrowingStream<GenerationEvent, Error>
+    func generate(_ request: GenerationRequest, toolRunner: ToolRunner?) -> AsyncThrowingStream<GenerationEvent, Error>
+}
+
+extension InferenceEngine {
+    /// Generation without tools, used by Compare and by any caller that doesn't run them.
+    func generate(_ request: GenerationRequest) -> AsyncThrowingStream<GenerationEvent, Error> {
+        generate(request, toolRunner: nil)
+    }
 }

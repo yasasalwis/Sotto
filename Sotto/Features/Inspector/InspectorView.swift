@@ -47,10 +47,6 @@ struct InspectorView: View {
                     }
                     HairlineRule()
                     samplingSection
-                    HairlineRule()
-                    if let session {
-                        PrivateCloudComputeRow(compact: true, allowsOverride: session.conversation.allowsPrivateCloudCompute) { session.conversation.allowsPrivateCloudCompute = $0 }
-                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 20)

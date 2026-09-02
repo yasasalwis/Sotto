@@ -193,6 +193,9 @@ struct PersonaEditor: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
+    @Query(sort: [SortDescriptor(\ToolDefinition.sortOrder), SortDescriptor(\ToolDefinition.createdAt)])
+    private var allTools: [ToolDefinition]
     @State private var name = ""
     @State private var summary = ""
     @State private var systemPrompt = ""
@@ -201,12 +204,16 @@ struct PersonaEditor: View {
     @State private var maxTokens = 1024
     @State private var localOnly = false
     @State private var shortcutSlot: Int?
+    @State private var toolMode: PersonaToolMode = .all
+    @State private var selectedToolIDs: Set<UUID> = []
     @State private var confirmDelete = false
     @State private var saved = false
 
     private var isDirty: Bool {
-        name != persona.name || summary != persona.summary || systemPrompt != persona.systemPrompt || modelRef != persona.modelRef || temperature != persona.temperature || maxTokens != persona.maxTokens || localOnly != persona.localOnly || shortcutSlot != persona.shortcutSlot
+        name != persona.name || summary != persona.summary || systemPrompt != persona.systemPrompt || modelRef != persona.modelRef || temperature != persona.temperature || maxTokens != persona.maxTokens || localOnly != persona.localOnly || shortcutSlot != persona.shortcutSlot || toolMode != persona.toolMode || selectedToolIDs != Set(persona.toolIDs)
     }
+
+    private var tools: [ToolDefinition] { allTools.filter(\.isUsable) }
 
     private var modelName: String {
         guard let modelRef else { return "Conversation's model" }
@@ -244,6 +251,7 @@ struct PersonaEditor: View {
                     MonoText("\(Format.integer(systemPrompt.count)) / \(Format.integer(Persona.maximumPromptLength)) characters", size: 10, color: Theme.Colors.faint)
                 }
                 cards
+                toolsSection
                 localOnlyRow
                 HStack {
                     Button("Delete persona…") { confirmDelete = true }
@@ -359,7 +367,7 @@ struct PersonaEditor: View {
     private var localOnlyRow: some View {
         HStack(spacing: 10) {
             MonoText("LOCAL ONLY", size: 11, color: Theme.Colors.accent)
-            Text("This persona will never route to Private Cloud Compute.")
+            Text("This persona may only call tools that run on this device.")
                 .font(Theme.Fonts.sans(13)).foregroundStyle(Theme.Colors.textSecondary)
             Spacer()
             Toggle("", isOn: $localOnly).toggleStyle(SottoToggleStyle(compact: true)).labelsHidden()
@@ -368,6 +376,76 @@ struct PersonaEditor: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .card(radius: Theme.Radius.card, background: Theme.Colors.accentBackground, border: Theme.Colors.accentSoft)
+    }
+
+    private var toolsSection: some View {
+        let permitted = localOnly ? tools.filter { !$0.usesNetwork } : tools
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                SectionLabel("Tools")
+                Spacer()
+                Button("Manage tools…") { openTools() }
+                    .buttonStyle(.plain)
+                    .font(Theme.Fonts.mono(11))
+                    .foregroundStyle(Theme.Colors.accent)
+            }
+            VStack(spacing: 0) {
+                Picker("", selection: $toolMode) {
+                    ForEach(PersonaToolMode.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                if toolMode == .selected {
+                    Rectangle().fill(Theme.Colors.hairline).frame(height: 1)
+                    if permitted.isEmpty {
+                        Text("No tools are enabled yet.")
+                            .font(Theme.Fonts.sans(13))
+                            .foregroundStyle(Theme.Colors.hint)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                    } else {
+                        ForEach(permitted) { tool in
+                            Button {
+                                if selectedToolIDs.contains(tool.id) {
+                                    selectedToolIDs.remove(tool.id)
+                                } else {
+                                    selectedToolIDs.insert(tool.id)
+                                }
+                            } label: {
+                                HStack(spacing: 11) {
+                                    Image(systemName: selectedToolIDs.contains(tool.id) ? "checkmark.square.fill" : "square")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(selectedToolIDs.contains(tool.id) ? Theme.Colors.accent : Theme.Colors.borderStrong)
+                                    ToolGlyph(kind: tool.kind, size: 22)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(tool.displayName).font(Theme.Fonts.sans(14)).foregroundStyle(Theme.Colors.ink)
+                                        MonoText(tool.name, size: 10, color: Theme.Colors.placeholder)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                            }
+                            .buttonStyle(PlainRowButtonStyle())
+                        }
+                    }
+                }
+            }
+            .card(radius: Theme.Radius.card)
+            if localOnly, tools.contains(where: { $0.usesNetwork }) {
+                MonoText("network tools are hidden while this persona is local only", size: 10, color: Theme.Colors.faint)
+            }
+        }
+    }
+
+    private func openTools() {
+        #if os(macOS)
+        openWindow(id: WindowID.tools)
+        #else
+        services.state.sheet = .tools
+        #endif
     }
 
     private func load() {
@@ -379,6 +457,8 @@ struct PersonaEditor: View {
         maxTokens = persona.maxTokens
         localOnly = persona.localOnly
         shortcutSlot = persona.shortcutSlot
+        toolMode = persona.toolMode
+        selectedToolIDs = Set(persona.toolIDs)
     }
 
     private func save() {
@@ -389,6 +469,8 @@ struct PersonaEditor: View {
         persona.temperature = temperature
         persona.maxTokens = maxTokens
         persona.localOnly = localOnly
+        persona.toolMode = toolMode
+        persona.toolIDs = Array(selectedToolIDs)
         persona.updatedAt = .now
         if let slot = shortcutSlot, let others = try? context.fetch(FetchDescriptor<Persona>()) {
             for other in others where other.id != persona.id && other.shortcutSlot == slot {

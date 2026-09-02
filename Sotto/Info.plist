@@ -28,8 +28,16 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Sotto uses only HTTPS/TLS provided by the system, which is exempt under the
+	     US export regulations, so App Store Connect need not ask on every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<!-- Model files are opened in place through a security-scoped URL and copied into the
+	     library once, rather than being duplicated into Inbox/ first. A GGUF can be gigabytes. -->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sotto uses Face ID to unlock your conversations when app lock is turned on.</string>
 	<key>UTImportedTypeDeclarations</key>

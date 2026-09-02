@@ -11,7 +11,6 @@ final class SettingsStore {
         case defaultModelRef
         case defaultPersonaID
         case storeConversations
-        case privateCloudCompute
         case catalogUpdates
         case catalogLastChecked
         case crashReports
@@ -24,6 +23,7 @@ final class SettingsStore {
         case idleUnloadMinutes
         case flashAttention
         case sendWithEnter
+        case toolsEnabled
         case showTokenCounter
         case verboseLogging
         case bytesSentMonthKey
@@ -65,29 +65,29 @@ final class SettingsStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding.rawValue)
+        hasCompletedOnboarding = Self.bool(defaults, .hasCompletedOnboarding, default: false)
         defaultModelRefRaw = defaults.string(forKey: Key.defaultModelRef.rawValue) ?? ModelRef.apple.rawValue
         defaultPersonaID = defaults.string(forKey: Key.defaultPersonaID.rawValue).flatMap(UUID.init(uuidString:))
-        storeConversations = defaults.object(forKey: Key.storeConversations.rawValue) as? Bool ?? true
-        privateCloudCompute = defaults.bool(forKey: Key.privateCloudCompute.rawValue)
-        catalogUpdates = defaults.bool(forKey: Key.catalogUpdates.rawValue)
+        storeConversations = Self.bool(defaults, .storeConversations, default: true)
+        catalogUpdates = Self.bool(defaults, .catalogUpdates, default: false)
         catalogLastChecked = defaults.object(forKey: Key.catalogLastChecked.rawValue) as? Date
-        crashReports = defaults.bool(forKey: Key.crashReports.rawValue)
-        wifiOnlyDownloads = defaults.object(forKey: Key.wifiOnlyDownloads.rawValue) as? Bool ?? true
-        requireAppLock = defaults.bool(forKey: Key.requireAppLock.rawValue)
+        crashReports = Self.bool(defaults, .crashReports, default: false)
+        wifiOnlyDownloads = Self.bool(defaults, .wifiOnlyDownloads, default: true)
+        requireAppLock = Self.bool(defaults, .requireAppLock, default: false)
         contextLength = defaults.object(forKey: Key.contextLength.rawValue) as? Int ?? Self.defaultContextLength
         gpuLayers = defaults.object(forKey: Key.gpuLayers.rawValue) as? Int ?? -1
         threadCount = defaults.object(forKey: Key.threadCount.rawValue) as? Int ?? 0
-        keepModelLoaded = defaults.object(forKey: Key.keepModelLoaded.rawValue) as? Bool ?? true
+        keepModelLoaded = Self.bool(defaults, .keepModelLoaded, default: true)
         idleUnloadMinutes = defaults.object(forKey: Key.idleUnloadMinutes.rawValue) as? Int ?? 10
         flashAttention = FlashAttentionMode(rawValue: defaults.string(forKey: Key.flashAttention.rawValue) ?? "") ?? .auto
-        sendWithEnter = defaults.object(forKey: Key.sendWithEnter.rawValue) as? Bool ?? true
-        showTokenCounter = defaults.object(forKey: Key.showTokenCounter.rawValue) as? Bool ?? true
-        verboseLogging = defaults.bool(forKey: Key.verboseLogging.rawValue)
+        sendWithEnter = Self.bool(defaults, .sendWithEnter, default: true)
+        toolsEnabled = Self.bool(defaults, .toolsEnabled, default: true)
+        showTokenCounter = Self.bool(defaults, .showTokenCounter, default: true)
+        verboseLogging = Self.bool(defaults, .verboseLogging, default: false)
         bytesSentMonthKey = defaults.string(forKey: Key.bytesSentMonthKey.rawValue) ?? Self.currentMonthKey()
         bytesSentThisMonth = defaults.object(forKey: Key.bytesSentThisMonth.rawValue) as? Int64 ?? 0
         bytesSentTotal = defaults.object(forKey: Key.bytesSentTotal.rawValue) as? Int64 ?? 0
-        inspectorVisible = defaults.object(forKey: Key.inspectorVisible.rawValue) as? Bool ?? true
+        inspectorVisible = Self.bool(defaults, .inspectorVisible, default: true)
         rolloverMonthIfNeeded()
     }
 
@@ -95,7 +95,6 @@ final class SettingsStore {
     var defaultModelRefRaw: String { didSet { defaults.set(defaultModelRefRaw, forKey: Key.defaultModelRef.rawValue) } }
     var defaultPersonaID: UUID? { didSet { defaults.set(defaultPersonaID?.uuidString, forKey: Key.defaultPersonaID.rawValue) } }
     var storeConversations: Bool { didSet { defaults.set(storeConversations, forKey: Key.storeConversations.rawValue) } }
-    var privateCloudCompute: Bool { didSet { defaults.set(privateCloudCompute, forKey: Key.privateCloudCompute.rawValue) } }
     var catalogUpdates: Bool { didSet { defaults.set(catalogUpdates, forKey: Key.catalogUpdates.rawValue) } }
     var catalogLastChecked: Date? { didSet { defaults.set(catalogLastChecked, forKey: Key.catalogLastChecked.rawValue) } }
     var crashReports: Bool { didSet { defaults.set(crashReports, forKey: Key.crashReports.rawValue) } }
@@ -108,6 +107,8 @@ final class SettingsStore {
     var idleUnloadMinutes: Int { didSet { defaults.set(idleUnloadMinutes, forKey: Key.idleUnloadMinutes.rawValue) } }
     var flashAttention: FlashAttentionMode { didSet { defaults.set(flashAttention.rawValue, forKey: Key.flashAttention.rawValue) } }
     var sendWithEnter: Bool { didSet { defaults.set(sendWithEnter, forKey: Key.sendWithEnter.rawValue) } }
+    /// Master switch for tool calling. Off means no tool is offered to any model.
+    var toolsEnabled: Bool { didSet { defaults.set(toolsEnabled, forKey: Key.toolsEnabled.rawValue) } }
     var showTokenCounter: Bool { didSet { defaults.set(showTokenCounter, forKey: Key.showTokenCounter.rawValue) } }
     var verboseLogging: Bool { didSet { defaults.set(verboseLogging, forKey: Key.verboseLogging.rawValue) } }
     var bytesSentMonthKey: String { didSet { defaults.set(bytesSentMonthKey, forKey: Key.bytesSentMonthKey.rawValue) } }
@@ -137,6 +138,18 @@ final class SettingsStore {
         }
     }
 
+    /// Reads a stored flag. A value passed on the command line (`-storeConversations NO`) arrives as
+    /// a string, so the plain `as? Bool` cast would silently miss it and fall back to the default.
+    static func bool(_ defaults: UserDefaults, _ key: Key, default fallback: Bool) -> Bool {
+        guard let value = defaults.object(forKey: key.rawValue) else { return fallback }
+        switch value {
+        case let flag as Bool: return flag
+        case let number as NSNumber: return number.boolValue
+        case let text as String: return (text as NSString).boolValue
+        default: return fallback
+        }
+    }
+
     static func currentMonthKey(_ date: Date = .now) -> String {
         let components = Calendar.current.dateComponents([.year, .month], from: date)
         return "\(components.year ?? 0)-\(components.month ?? 0)"
@@ -152,7 +165,6 @@ final class SettingsStore {
         defaultModelRefRaw = fresh.defaultModelRefRaw
         defaultPersonaID = fresh.defaultPersonaID
         storeConversations = fresh.storeConversations
-        privateCloudCompute = fresh.privateCloudCompute
         catalogUpdates = fresh.catalogUpdates
         catalogLastChecked = fresh.catalogLastChecked
         crashReports = fresh.crashReports
@@ -165,6 +177,7 @@ final class SettingsStore {
         idleUnloadMinutes = fresh.idleUnloadMinutes
         flashAttention = fresh.flashAttention
         sendWithEnter = fresh.sendWithEnter
+        toolsEnabled = fresh.toolsEnabled
         showTokenCounter = fresh.showTokenCounter
         verboseLogging = fresh.verboseLogging
         inspectorVisible = fresh.inspectorVisible

@@ -79,6 +79,8 @@ final class CompareRunner {
                     slots[index].text += delta
                 case .replace(let text):
                     slots[index].text = text
+                case .toolCall, .toolResult:
+                    break
                 case .finished(let outcome):
                     slots[index].latency = outcome.totalSeconds
                     slots[index].tokensPerSecond = outcome.tokensPerSecond

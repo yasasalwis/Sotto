@@ -1,0 +1,737 @@
+import Foundation
+import os
+import SwiftData
+import Testing
+@testable import Sotto
+
+@MainActor
+struct ArithmeticTests {
+    @Test func evaluatesPrecedenceAndParentheses() throws {
+        #expect(try Arithmetic.evaluate("17*23") == 391)
+        #expect(try Arithmetic.evaluate("2+3*4") == 14)
+        #expect(try Arithmetic.evaluate("(4.5+2)/3") == 6.5 / 3)
+        #expect(try Arithmetic.evaluate("-7 + 2") == -5)
+        #expect(try Arithmetic.evaluate("2^10") == 1024)
+        #expect(try Arithmetic.evaluate("7/2") == 3.5)
+        #expect(try Arithmetic.evaluate("10 % 3") == 1)
+        #expect(try Arithmetic.evaluate("1,250 + 250") == 1500)
+    }
+
+    @Test func rejectsMalformedInputWithoutCrashing() {
+        #expect(throws: Arithmetic.EvaluationError.self) { try Arithmetic.evaluate("2+") }
+        #expect(throws: Arithmetic.EvaluationError.self) { try Arithmetic.evaluate("((2)") }
+        #expect(throws: Arithmetic.EvaluationError.self) { try Arithmetic.evaluate("rm -rf /") }
+        #expect(throws: Arithmetic.EvaluationError.self) { try Arithmetic.evaluate("1/0") }
+        #expect(throws: Arithmetic.EvaluationError.self) { try Arithmetic.evaluate("") }
+    }
+}
+
+@MainActor
+struct BuiltInToolTests {
+    @Test func calculatorFormatsResults() throws {
+        #expect(try BuiltInTools.calculate("17*23") == "17*23 = 391")
+        #expect(try BuiltInTools.calculate(" 7/2 ") == "7/2 = 3.5")
+        #expect(throws: ToolExecutionError.self) { try BuiltInTools.calculate("2 +") }
+    }
+
+    @Test func convertsBetweenCompatibleUnits() throws {
+        #expect(try BuiltInTools.convert(value: 5, from: "km", to: "mi").hasPrefix("5 km = 3.10"))
+        #expect(try BuiltInTools.convert(value: 100, from: "c", to: "f").contains("212"))
+        #expect(throws: ToolExecutionError.self) { try BuiltInTools.convert(value: 1, from: "kg", to: "km") }
+        #expect(throws: ToolExecutionError.self) { try BuiltInTools.convert(value: 1, from: "widgets", to: "km") }
+    }
+
+    @Test func countsText() {
+        let stats = BuiltInTools.textStatistics("Hello there. This is a test!")
+        #expect(stats.contains("6 words"))
+        #expect(stats.contains("2 sentences"))
+    }
+
+    @Test func datetimeMentionsTheTimeZone() {
+        #expect(BuiltInTools.currentDateTime().contains(TimeZone.current.identifier))
+    }
+}
+
+@MainActor
+struct ToolCallParsingTests {
+    @Test func parsesAWellFormedBlock() throws {
+        let call = try #require(ToolCallParser.parse("<tool_call>\n{\"name\": \"calculate\", \"arguments\": {\"expression\": \"2+2\"}}\n</tool_call>"))
+        #expect(call.name == "calculate")
+        #expect(call.argumentsJSON == "{\"expression\":\"2+2\"}")
+    }
+
+    @Test func toleratesFencesAndParametersAlias() throws {
+        let call = try #require(ToolCallParser.parse("```json\n{\"name\":\"x\",\"parameters\":{\"a\":1}}\n```"))
+        #expect(call.name == "x")
+        #expect(call.argumentsJSON == "{\"a\":1}")
+    }
+
+    @Test func recoversACallWhoseNameTheModelOmitted() throws {
+        let tools = [
+            ToolSpec(name: "calculate", description: "", parameters: [ToolParameter(name: "expression", type: .string, summary: "")]),
+            ToolSpec(name: "convert_units", description: "", parameters: [
+                ToolParameter(name: "value", type: .number, summary: ""),
+                ToolParameter(name: "from", type: .string, summary: ""),
+                ToolParameter(name: "to", type: .string, summary: ""),
+            ]),
+        ]
+        let call = try #require(ToolCallParser.parse("{\"arguments\": {\"expression\": \"4321 * 8765\"}}", tools: tools))
+        #expect(call.name == "calculate")
+        #expect(call.argumentsJSON == "{\"expression\":\"4321 * 8765\"}")
+    }
+
+    @Test func doesNotGuessWhenSeveralToolsFit() {
+        let tools = [
+            ToolSpec(name: "a", description: "", parameters: [ToolParameter(name: "text", type: .string, summary: "")]),
+            ToolSpec(name: "b", description: "", parameters: [ToolParameter(name: "text", type: .string, summary: "")]),
+        ]
+        #expect(ToolCallParser.parse("{\"arguments\": {\"text\": \"hi\"}}", tools: tools) == nil)
+        #expect(ToolCallParser.parse("{\"arguments\": {\"text\": \"hi\"}}") == nil)
+    }
+
+    @Test func doesNotGuessWhenArgumentsDoNotFit() {
+        let tools = [ToolSpec(name: "calculate", description: "", parameters: [ToolParameter(name: "expression", type: .string, summary: "")])]
+        #expect(ToolCallParser.parse("{\"arguments\": {\"unknown\": 1}}", tools: tools) == nil)
+    }
+
+    @Test func rejectsNonsense() {
+        #expect(ToolCallParser.parse("no json here") == nil)
+        #expect(ToolCallParser.parse("{\"arguments\": {}}") == nil)
+    }
+}
+
+@MainActor
+struct ToolCallScannerTests {
+    @Test func holdsBackPartialOpeningTag() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("Let me check. <tool").visible == "Let me check. ")
+        let second = scanner.feed("_call>\n{\"name\":\"calculate\",\"arguments\":{\"expression\":\"1+1\"}}\n</tool_call>")
+        #expect(second.visible.isEmpty)
+        #expect(second.call?.name == "calculate")
+    }
+
+    @Test func passesPlainTextThrough() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("Hello, world.").visible == "Hello, world.")
+        #expect(scanner.flush().visible.isEmpty)
+    }
+
+    @Test func keepsTextAfterABlock() {
+        var scanner = ToolCallScanner()
+        _ = scanner.feed("<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>")
+        #expect(scanner.feed(" done").visible == " done")
+    }
+
+    @Test func reportsAnUnparsableBlock() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("<tool_call>not json</tool_call>")
+        #expect(output.call == nil)
+        #expect(output.unparsedBlock != nil)
+    }
+
+    @Test func partialSuffixMatching() {
+        #expect(ToolCallScanner.partialSuffixLength(of: "abc<tool", matching: "<tool_call>") == 5)
+        #expect(ToolCallScanner.partialSuffixLength(of: "abc", matching: "<tool_call>") == 0)
+    }
+
+    @Test func recoversTheNamelessCallSeenFromQwen() {
+        let tools = [ToolSpec(name: "calculate", description: "", parameters: [ToolParameter(name: "expression", type: .string, summary: "")])]
+        var scanner = ToolCallScanner(tools: tools)
+        // Exactly what the 3B model produced once its <tool_call> token had been stripped.
+        let output = scanner.feed("{\"arguments\": {\"expression\": \"4321 * 8765\"}}")
+        #expect(output.call?.name == "calculate")
+        #expect(output.visible.isEmpty)
+    }
+
+    @Test func recognisesBareJSONWhenTagsAreStrippedBySpecialTokens() {
+        var scanner = ToolCallScanner()
+        // Qwen holds <tool_call> as a special token, so only the JSON reaches us.
+        let output = scanner.feed("\n{\"name\": \"calculate\", \"arguments\": {\"expression\": \"4321 * 8765\"}}\n")
+        #expect(output.call?.name == "calculate")
+        #expect(output.visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    @Test func bareJSONArrivingInPiecesIsHeldBack() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("{\"name\": \"calc").visible.isEmpty)
+        #expect(scanner.feed("ulate\", \"arguments\": {\"expression\"").visible.isEmpty)
+        let final = scanner.feed(": \"1+1\"}}")
+        #expect(final.call?.name == "calculate")
+        #expect(final.call?.argumentsJSON == "{\"expression\":\"1+1\"}")
+    }
+
+    @Test func jsonThatIsNotACallIsShownToTheUser() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("{\"answer\": 42}")
+        #expect(output.call == nil)
+        #expect(output.visible == "{\"answer\": 42}")
+    }
+
+    @Test func bracesInsideStringsDoNotEndTheObject() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("{\"name\":\"echo\",\"arguments\":{\"text\":\"a } b {\"}}")
+        #expect(output.call?.name == "echo")
+    }
+
+    @Test func jsonLaterInAReplyStaysVisible() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("Here is an example: ").visible == "Here is an example: ")
+        #expect(scanner.feed("{\"name\":\"x\",\"arguments\":{}}").visible.contains("{\"name\""))
+    }
+
+    @Test func unterminatedBlockStillParses() {
+        var scanner = ToolCallScanner()
+        _ = scanner.feed("<tool_call>{\"name\":\"a\",\"arguments\":{}}")
+        #expect(scanner.flush().call?.name == "a")
+    }
+}
+
+@MainActor
+struct ToolPromptFormatterTests {
+    @Test func describesEachTool() {
+        let spec = ToolSpec(name: "calculate", description: "Does maths.", parameters: [ToolParameter(name: "expression", type: .string, summary: "The sum")])
+        let text = ToolPromptFormatter.instructions(for: [spec])
+        #expect(text.contains("calculate: Does maths."))
+        #expect(text.contains("\"type\":\"string\""))
+        #expect(text.contains("\"required\":[\"expression\"]"))
+        #expect(ToolPromptFormatter.instructions(for: []).isEmpty)
+    }
+
+    @Test func tellsTheModelWhenToLeaveToolsAlone() {
+        let spec = ToolSpec(name: "a", description: "b", parameters: [])
+        let text = ToolPromptFormatter.instructions(for: [spec])
+        #expect(text.contains(ToolPromptFormatter.usageRule))
+        #expect(ToolPromptFormatter.usageRule.contains("greetings"))
+        #expect(ToolPromptFormatter.usageRule.contains("Answer directly"))
+    }
+
+    @Test func appleInstructionsCarryTheSameRule() {
+        let withTools = AppleIntelligenceEngine.instructionsText(
+            systemPrompt: "Be brief.",
+            toolRule: ToolPromptFormatter.usageRule
+        )
+        #expect(withTools.hasPrefix("Be brief."))
+        #expect(withTools.contains("Answer directly"))
+
+        // Without tools the persona prompt is passed through untouched.
+        #expect(AppleIntelligenceEngine.instructionsText(systemPrompt: "Be brief.", toolRule: nil) == "Be brief.")
+        // With no persona the rule still reaches the model on its own.
+        #expect(AppleIntelligenceEngine.instructionsText(systemPrompt: nil, toolRule: "rule") == "rule")
+        #expect(AppleIntelligenceEngine.instructionsText(systemPrompt: "  ", toolRule: nil).isEmpty)
+    }
+
+    @Test func everyShippedToolSaysWhenNotToCallIt() {
+        for tool in ToolDefinition.builtInSeeds() {
+            #expect(tool.summary.contains("only when"), "\(tool.name) does not limit when it is called")
+            #expect(tool.seededSummary == tool.summary)
+        }
+    }
+
+    @Test func keepsTheBasePrompt() {
+        let spec = ToolSpec(name: "a", description: "b", parameters: [])
+        let prompt = try! #require(ToolPromptFormatter.systemPrompt(base: "Be brief.", tools: [spec]))
+        #expect(prompt.hasPrefix("Be brief."))
+        #expect(prompt.contains("# Tools"))
+        #expect(ToolPromptFormatter.systemPrompt(base: "Be brief.", tools: []) == "Be brief.")
+    }
+}
+
+@MainActor
+struct ToolTemplateTests {
+    @Test func substitutesAndEscapes() {
+        let url = ToolTemplate.substitute("https://x.test/?q={query}", arguments: ["query": "a b&c"]) { value in
+            value.addingPercentEncoding(withAllowedCharacters: .sottoURLValueAllowed) ?? value
+        }
+        #expect(url == "https://x.test/?q=a%20b%26c")
+    }
+
+    @Test func quotesShellArguments() {
+        let command = ToolTemplate.substitute("echo {text}", arguments: ["text": "hi; rm -rf /"]) { value in
+            "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        #expect(command == "echo 'hi; rm -rf /'")
+    }
+
+    @Test func formatsNumbersWithoutDecimalNoise() {
+        #expect(ToolTemplate.displayString(NSNumber(value: 5.0)) == "5")
+        #expect(ToolTemplate.displayString(NSNumber(value: 2.5)) == "2.5")
+        #expect(ToolTemplate.displayString(NSNumber(value: true)) == "true")
+    }
+}
+
+@MainActor
+struct HTTPToolTests {
+    private let body = "{\"current\":{\"temperature\":21.5,\"list\":[{\"v\":\"first\"}]}}"
+
+    @Test func followsADotPath() {
+        #expect(HTTPTool.extract(path: "current.temperature", from: body) == "21.5")
+        #expect(HTTPTool.extract(path: "current.list.0.v", from: body) == "first")
+    }
+
+    @Test func returnsTheWholeBodyWhenThePathMisses() {
+        #expect(HTTPTool.extract(path: "", from: body) == body)
+        #expect(HTTPTool.extract(path: "nope.here", from: body) == body)
+    }
+}
+
+@MainActor
+struct ToolDefinitionTests {
+    @Test func validatesFunctionNames() {
+        #expect(ToolDefinition.isValidName("weather_now"))
+        #expect(!ToolDefinition.isValidName("Weather"))
+        #expect(!ToolDefinition.isValidName("9lives"))
+        #expect(!ToolDefinition.isValidName("a"))
+        #expect(!ToolDefinition.isValidName("has space"))
+    }
+
+    @Test func suggestsNamesFromDisplayNames() {
+        #expect(ToolDefinition.suggestedName(from: "Weather now") == "weather_now")
+        #expect(ToolDefinition.suggestedName(from: "  3 Things!") == "things")
+        #expect(ToolDefinition.suggestedName(from: "!") == "my_tool")
+    }
+
+    @Test func seededToolsAreWellFormedAndUnique() {
+        let seeds = ToolDefinition.builtInSeeds()
+        #expect(Set(seeds.map(\.name)).count == seeds.count)
+        for seed in seeds {
+            #expect(seed.isBuiltIn)
+            #expect(ToolDefinition.isValidName(seed.name))
+            #expect(!seed.summary.isEmpty)
+        }
+        // Everything that runs on device ships enabled; the one that reaches the network does not.
+        let onDevice = seeds.filter { $0.kind == .builtIn }
+        #expect(onDevice.count == BuiltInToolID.allCases.count)
+        for seed in onDevice {
+            #expect(!seed.usesNetwork)
+            #expect(seed.isEnabled)
+            #expect(!seed.needsSetup)
+        }
+        let networked = seeds.filter(\.usesNetwork)
+        #expect(networked.count == 1)
+        #expect(networked.allSatisfy { !$0.isEnabled && $0.approval == .askEveryTime })
+    }
+
+    @Test func schemaListsRequiredParametersOnly() {
+        let spec = ToolSpec(name: "t", description: "d", parameters: [
+            ToolParameter(name: "a", type: .string, summary: "A"),
+            ToolParameter(name: "b", type: .number, summary: "B", isRequired: false),
+        ])
+        let json = spec.parametersSchemaJSON
+        #expect(json.contains("\"required\":[\"a\"]"))
+        #expect(json.contains("\"type\":\"number\""))
+    }
+}
+
+@MainActor
+struct PersonaToolSelectionTests {
+    private func makeTools() -> [ToolDefinition] {
+        let local = ToolDefinition(name: "local_tool", displayName: "Local", summary: "", kind: .builtIn, builtIn: .calculator)
+        let remote = ToolDefinition(name: "remote_tool", displayName: "Remote", summary: "", kind: .httpRequest)
+        return [local, remote]
+    }
+
+    @Test func modesFilterTheList() {
+        let tools = makeTools()
+        let persona = Persona(name: "P", summary: "", systemPrompt: "")
+        #expect(persona.tools(from: tools).count == 2)
+        persona.toolMode = .none
+        #expect(persona.tools(from: tools).isEmpty)
+        persona.toolMode = .selected
+        persona.toolIDs = [tools[1].id]
+        #expect(persona.tools(from: tools).map(\.name) == ["remote_tool"])
+    }
+
+    @Test func localOnlyPersonasNeverSeeNetworkTools() {
+        let tools = makeTools()
+        let persona = Persona(name: "P", summary: "", systemPrompt: "", localOnly: true)
+        #expect(persona.tools(from: tools).map(\.name) == ["local_tool"])
+        persona.toolMode = .selected
+        persona.toolIDs = tools.map(\.id)
+        #expect(persona.tools(from: tools).map(\.name) == ["local_tool"])
+    }
+}
+
+@MainActor
+struct ToolExecutorTests {
+    @Test func requiredArgumentsAreChecked() {
+        let parameters = [ToolParameter(name: "a", type: .string, summary: ""), ToolParameter(name: "n", type: .number, summary: "")]
+        #expect(throws: ToolExecutionError.self) { try ToolExecutor.validate(["n": 1], against: parameters) }
+        #expect(throws: ToolExecutionError.self) { try ToolExecutor.validate(["a": "x", "n": "not a number"], against: parameters) }
+        #expect(throws: Never.self) { try ToolExecutor.validate(["a": "x", "n": 2], against: parameters) }
+    }
+
+    @Test func decodesArguments() {
+        #expect(ToolExecutor.decodeArguments("{\"a\":1}").count == 1)
+        #expect(ToolExecutor.decodeArguments("nonsense").isEmpty)
+    }
+
+    @Test func refusesInsecureURLs() async throws {
+        let store = SettingsStore(defaults: UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!)
+        var config = HTTPToolConfig()
+        config.urlTemplate = "http://example.com"
+        await #expect(throws: ToolExecutionError.insecureURL) {
+            _ = try await HTTPTool.run(config, arguments: [:], settings: store)
+        }
+    }
+
+    @Test func runsABuiltInToolEndToEnd() async throws {
+        let container = try ModelContainer(
+            for: PersistenceController.schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+        )
+        let store = SettingsStore(defaults: UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!)
+        let executor = ToolExecutor(settings: store, context: container.mainContext)
+        let tool = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .calculator })
+        let result = await executor.execute(tool, arguments: ["expression": "6*7"])
+        #expect(result.success)
+        #expect(result.text == "6*7 = 42")
+        #expect(result.bytesSent == 0)
+
+        let bad = await executor.execute(tool, arguments: [:])
+        #expect(!bad.success)
+        #expect(bad.text.hasPrefix("Error:"))
+    }
+
+    #if os(macOS) && SOTTO_SHELL_TOOL
+    @Test func runsAShellToolWithQuotedArguments() async throws {
+        var config = ShellToolConfig()
+        config.command = "echo {text}"
+        let output = try await ShellTool.run(config, arguments: ["text": "hello; echo pwned"])
+        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines) == "hello; echo pwned")
+    }
+
+    @Test func reportsAFailingCommand() async {
+        var config = ShellToolConfig()
+        config.command = "exit 3"
+        await #expect(throws: ToolExecutionError.self) {
+            _ = try await ShellTool.run(config, arguments: [:])
+        }
+    }
+    #endif
+
+    /// The shell tool is compiled out of App Store builds. Whichever build this is, the kind
+    /// picker and the availability flag must agree, so a person is never offered a tool the
+    /// executor will refuse.
+    @Test func theShellKindIsOfferedOnlyWhenItIsCompiledIn() {
+        #expect(ToolKind.creatableKinds.contains(.shellCommand) == ToolKind.shellToolIsCompiledIn)
+        #expect(ToolKind.shellCommand.isAvailableOnThisPlatform == ToolKind.shellToolIsCompiledIn)
+        #expect((ToolKind.shellCommand.unavailableReason == nil) == ToolKind.shellToolIsCompiledIn)
+        // The other kinds are always offered.
+        #expect(ToolKind.creatableKinds.contains(.webSearch))
+        #expect(ToolKind.creatableKinds.contains(.httpRequest))
+        #expect(!ToolKind.creatableKinds.contains(.builtIn))
+    }
+
+    /// A shell tool left in the database by a build that had the feature must not run in a
+    /// build that does not — the executor refuses it rather than trusting the UI to hide it.
+    @Test func aShellToolIsRefusedWhenTheFeatureIsNotCompiledIn() async throws {
+        guard !ToolKind.shellToolIsCompiledIn else { return }
+        let container = try ModelContainer(
+            for: PersistenceController.schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+        )
+        let store = SettingsStore(defaults: UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!)
+        let executor = ToolExecutor(settings: store, context: container.mainContext)
+        let tool = ToolDefinition(name: "leftover", displayName: "Leftover", summary: "", kind: .shellCommand)
+        tool.shellConfig = ShellToolConfig(command: "echo hi")
+        let result = await executor.execute(tool, arguments: [:])
+        #expect(!result.success)
+        #expect(result.bytesSent == 0)
+    }
+}
+
+
+/// Drives the approval and execution path that sits between a model's request and a tool run.
+@MainActor
+struct ChatSessionToolRunnerTests {
+    /// Owns the container so it outlives the session that reads from its context.
+    @MainActor
+    private final class Harness {
+        let services: AppServices
+        let container: ModelContainer
+        let session: ChatSession
+
+        init(tools: [ToolDefinition], persona: Persona?) throws {
+            services = AppServices()
+            container = try ModelContainer(
+                for: PersistenceController.schema,
+                configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+            )
+            let context = container.mainContext
+            for tool in tools { context.insert(tool) }
+            if let persona { context.insert(persona) }
+            let conversation = Conversation(modelRef: .apple, personaID: persona?.id)
+            context.insert(conversation)
+            try context.save()
+            session = ChatSession(conversation: conversation, services: services, context: context)
+        }
+    }
+
+    private func calculatorTool() throws -> ToolDefinition {
+        try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .calculator })
+    }
+
+    private func searchTool() throws -> ToolDefinition {
+        try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .searchConversations })
+    }
+
+    private func waitForApproval(_ session: ChatSession) async throws {
+        for _ in 0..<300 where session.pendingToolApproval == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @Test func automaticToolRunsWithoutAsking() async throws {
+        let calculator = try calculatorTool()
+        let harness = try Harness(tools: [calculator], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        let result = await harness.session.run(ToolCallRequest(name: "calculate", argumentsJSON: "{\"expression\":\"6*7\"}"))
+        #expect(result.success)
+        #expect(result.text == "6*7 = 42")
+        #expect(harness.session.pendingToolApproval == nil)
+        #expect(calculator.usageCount == 1)
+    }
+
+    @Test func askEveryTimeWaitsAndCanBeDeclined() async throws {
+        let search = try searchTool()
+        let harness = try Harness(tools: [search], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        async let result = harness.session.run(ToolCallRequest(name: "search_conversations", argumentsJSON: "{\"query\":\"anything\"}"))
+        try await waitForApproval(harness.session)
+        #expect(harness.session.pendingToolApproval?.toolName == "search_conversations")
+        harness.session.resolveToolApproval(.deny)
+        let outcome = await result
+        #expect(outcome.denied)
+        #expect(!outcome.success)
+        #expect(search.usageCount == 0)
+        #expect(harness.session.pendingToolApproval == nil)
+    }
+
+    @Test func alwaysAllowFlipsTheToolToAutomatic() async throws {
+        let search = try searchTool()
+        let harness = try Harness(tools: [search], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        async let result = harness.session.run(ToolCallRequest(name: "search_conversations", argumentsJSON: "{\"query\":\"zzz\"}"))
+        try await waitForApproval(harness.session)
+        harness.session.resolveToolApproval(.allowAlways)
+        let outcome = await result
+        #expect(outcome.success)
+        #expect(search.approval == .automatic)
+    }
+
+    @Test func unknownToolsAreReportedToTheModel() async throws {
+        let harness = try Harness(tools: [try calculatorTool()], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        let result = await harness.session.run(ToolCallRequest(name: "does_not_exist", argumentsJSON: "{}"))
+        #expect(!result.success)
+        #expect(result.text.contains("does_not_exist"))
+        #expect(result.text.contains("calculate"))
+    }
+
+    @Test func personaSelectionHidesToolsFromTheModel() async throws {
+        let persona = Persona(name: "Terse", summary: "", systemPrompt: "")
+        persona.toolMode = .none
+        let harness = try Harness(tools: [try calculatorTool()], persona: persona)
+        defer { withExtendedLifetime(harness) {} }
+        #expect(harness.session.availableTools.isEmpty)
+        let result = await harness.session.run(ToolCallRequest(name: "calculate", argumentsJSON: "{}"))
+        #expect(!result.success)
+    }
+
+    @Test func theCallLimitStopsRunawayLoops() async throws {
+        let harness = try Harness(tools: [try calculatorTool()], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        for _ in 0..<ToolDefinition.maximumCallsPerTurn {
+            let result = await harness.session.run(ToolCallRequest(name: "calculate", argumentsJSON: "{\"expression\":\"1+1\"}"))
+            #expect(result.success)
+        }
+        let extra = await harness.session.run(ToolCallRequest(name: "calculate", argumentsJSON: "{\"expression\":\"1+1\"}"))
+        #expect(!extra.success)
+        #expect(extra.text.contains("tool calls"))
+    }
+
+    @Test func masterSwitchOffMeansNoTools() async throws {
+        let harness = try Harness(tools: [try calculatorTool()], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        harness.services.settings.toolsEnabled = false
+        defer { harness.services.settings.toolsEnabled = true }
+        #expect(harness.session.availableTools.isEmpty)
+    }
+}
+
+
+@MainActor
+struct WebSearchToolTests {
+    private var config: WebSearchConfig {
+        var config = WebSearchConfig()
+        config.searchEngineID = "cx123"
+        config.resultCount = 3
+        return config
+    }
+
+    @Test func buildsTheRequestURL() throws {
+        let url = try #require(WebSearchTool.makeURL(config, apiKey: "KEY", query: "swift concurrency"))
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let values = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        #expect(url.host == "www.googleapis.com")
+        #expect(values["key"] == "KEY")
+        #expect(values["cx"] == "cx123")
+        #expect(values["q"] == "swift concurrency")
+        #expect(values["num"] == "3")
+        #expect(values["safe"] == "active")
+    }
+
+    @Test func restrictsToASiteAndClampsTheCount() throws {
+        var config = self.config
+        config.site = "apple.com"
+        config.resultCount = 50
+        config.safeSearch = false
+        let url = try #require(WebSearchTool.makeURL(config, apiKey: "K", query: "swiftdata"))
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let values = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        #expect(values["q"] == "swiftdata site:apple.com")
+        #expect(values["num"] == "10")
+        #expect(values["safe"] == "off")
+    }
+
+    @Test func parsesAndFormatsResults() throws {
+        let body = """
+        {"items": [
+          {"title": "Swift.org", "snippet": "The Swift programming language.", "link": "https://swift.org"},
+          {"title": "Concurrency", "snippet": "Tasks and actors.", "link": "https://docs.swift.org/c"}
+        ]}
+        """
+        let results = WebSearchTool.parse(Data(body.utf8), limit: 5)
+        #expect(results.count == 2)
+        #expect(results[0].title == "Swift.org")
+        #expect(results[1].link == "https://docs.swift.org/c")
+
+        let text = WebSearchTool.format(results, query: "swift")
+        #expect(text.contains("1. Swift.org"))
+        #expect(text.contains("2. Concurrency"))
+        #expect(text.contains("https://swift.org"))
+        #expect(text.contains("not verified facts"))
+    }
+
+    @Test func honoursTheResultLimitAndTruncatesLongSnippets() {
+        let long = String(repeating: "a", count: 400)
+        let body = "{\"items\": [{\"title\": \"T\", \"snippet\": \"\(long)\", \"link\": \"https://x.test\"}, {\"title\": \"U\", \"snippet\": \"s\", \"link\": \"https://y.test\"}]}"
+        let results = WebSearchTool.parse(Data(body.utf8), limit: 1)
+        #expect(results.count == 1)
+        #expect(results[0].snippet.count <= WebSearchTool.snippetLimit + 1)
+    }
+
+    @Test func emptyAnswersParseToNothing() {
+        #expect(WebSearchTool.parse(Data("{}".utf8), limit: 5).isEmpty)
+        #expect(WebSearchTool.parse(Data("not json".utf8), limit: 5).isEmpty)
+    }
+
+    @Test func explainsGoogleFailures() {
+        let body = Data("{\"error\": {\"message\": \"API key not valid\"}}".utf8)
+        #expect(WebSearchTool.failureMessage(status: 403, body: body).contains("API key not valid"))
+        #expect(WebSearchTool.failureMessage(status: 403, body: body).contains("Custom Search API"))
+        #expect(WebSearchTool.failureMessage(status: 429, body: Data()).contains("100 searches a day"))
+        #expect(WebSearchTool.failureMessage(status: 400, body: Data()).contains("search engine id"))
+    }
+
+    @Test func searchIsANetworkToolAndNeedsSetup() {
+        let tool = try! #require(ToolDefinition.builtInSeeds().first { $0.kind == .webSearch })
+        #expect(tool.usesNetwork)
+        #expect(!tool.isEnabled)
+        #expect(tool.needsSetup)
+        #expect(!tool.isUsable)
+        #expect(tool.name == "google_search")
+        // A local-only persona must never be offered it.
+        let persona = Persona(name: "Local", summary: "", systemPrompt: "", localOnly: true)
+        #expect(persona.tools(from: [tool]).isEmpty)
+    }
+}
+
+@MainActor
+struct SeedRefreshTests {
+    @Test func improvedWordingReplacesUntouchedDescriptions() throws {
+        let container = try ModelContainer(
+            for: PersistenceController.schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+        )
+        let context = container.mainContext
+        let seed = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .calculator })
+        let stale = ToolDefinition(
+            name: seed.name,
+            displayName: seed.displayName,
+            summary: "An older description.",
+            kind: .builtIn,
+            parameters: seed.parameters,
+            approval: .automatic,
+            isBuiltIn: true,
+            builtIn: .calculator
+        )
+        stale.seededSummary = "An older description."
+        let edited = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .unitConverter })
+        edited.summary = "My own wording."
+        context.insert(stale)
+        context.insert(edited)
+        try context.save()
+
+        PersistenceController.seedIfNeeded(context: context)
+
+        #expect(stale.summary == seed.summary)
+        #expect(stale.seededSummary == seed.summary)
+        // A description the user rewrote is left exactly as they left it.
+        #expect(edited.summary == "My own wording.")
+        withExtendedLifetime(container) {}
+    }
+}
+
+@MainActor
+struct ToolCreationTests {
+    @Test func newToolsGetAFreeFunctionName() {
+        let first = ToolDefinition(name: "my_tool", displayName: "", summary: "", kind: .httpRequest)
+        let second = ToolDefinition(name: "my_tool_2", displayName: "", summary: "", kind: .httpRequest)
+        #expect(ToolsView.unusedName(among: []) == "my_tool")
+        #expect(ToolsView.unusedName(among: [first]) == "my_tool_2")
+        #expect(ToolsView.unusedName(among: [first, second]) == "my_tool_3")
+    }
+
+    @Test func setupIsRequiredUntilTheEssentialsAreThere() {
+        let http = ToolDefinition(name: "h", displayName: "", summary: "", kind: .httpRequest)
+        http.httpConfig = HTTPToolConfig()
+        #expect(http.needsSetup)
+        var config = HTTPToolConfig()
+        config.urlTemplate = "https://example.com/{q}"
+        http.httpConfig = config
+        #expect(!http.needsSetup)
+
+        let shell = ToolDefinition(name: "s", displayName: "", summary: "", kind: .shellCommand)
+        shell.shellConfig = ShellToolConfig()
+        #expect(shell.needsSetup)
+        shell.shellConfig = ShellToolConfig(command: "date")
+        #expect(!shell.needsSetup)
+    }
+}
+
+@MainActor
+struct KeychainStoreTests {
+    @Test func storesAndRemovesASecret() throws {
+        let account = "sotto.test.\(UUID().uuidString)"
+        guard KeychainStore.set("hunter2", for: account) else {
+            // Some CI keychains refuse writes; the app surfaces that to the user instead.
+            Log.app.notice("Skipping keychain test: the keychain refused a write")
+            return
+        }
+        defer { KeychainStore.remove(account) }
+        #expect(KeychainStore.value(for: account) == "hunter2")
+        #expect(KeychainStore.hasValue(for: account))
+        #expect(KeychainStore.set("changed", for: account))
+        #expect(KeychainStore.value(for: account) == "changed")
+        #expect(KeychainStore.remove(account))
+        #expect(KeychainStore.value(for: account) == nil)
+        #expect(!KeychainStore.hasValue(for: account))
+    }
+
+    @Test func blankValuesRemoveRatherThanStore() {
+        let account = "sotto.test.\(UUID().uuidString)"
+        _ = KeychainStore.set("   ", for: account)
+        #expect(KeychainStore.value(for: account) == nil)
+    }
+}

@@ -48,6 +48,8 @@ struct ComposerView: View {
         VStack(spacing: 14) {
             attachmentChips
             editor
+                .contentShape(Rectangle())
+                .onTapGesture { focused = true }
             HStack(spacing: 10) {
                 Button("＠ attach") { services.state.isAttachingFile = true }
                     .buttonStyle(ChipButtonStyle())
@@ -116,6 +118,9 @@ struct ComposerView: View {
                     .padding(.vertical, 11)
                     .frame(minHeight: 44)
                     .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle())
+                    // The pill is the tap target, not just the glyphs inside it.
+                    .onTapGesture { focused = true }
                     .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.Colors.borderMedium, lineWidth: 1))
                 sendButton(size: 44, radius: 22, iconSize: 17)
             }

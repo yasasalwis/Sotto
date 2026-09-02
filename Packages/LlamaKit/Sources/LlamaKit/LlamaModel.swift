@@ -268,10 +268,11 @@ public final class LlamaModel: @unchecked Sendable {
             }
             generated += 1
 
-            var length = llama_token_to_piece(vocab, token, &pieceBuffer, Int32(pieceBuffer.count), 0, false)
+            let renderSpecial = options.rendersSpecialTokens
+            var length = llama_token_to_piece(vocab, token, &pieceBuffer, Int32(pieceBuffer.count), 0, renderSpecial)
             if length < 0 {
                 pieceBuffer = [CChar](repeating: 0, count: Int(-length) + 1)
-                length = llama_token_to_piece(vocab, token, &pieceBuffer, Int32(pieceBuffer.count), 0, false)
+                length = llama_token_to_piece(vocab, token, &pieceBuffer, Int32(pieceBuffer.count), 0, renderSpecial)
             }
             if length > 0 {
                 let bytes = pieceBuffer[0..<Int(length)].map { UInt8(bitPattern: $0) }

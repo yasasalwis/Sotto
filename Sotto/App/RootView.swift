@@ -117,6 +117,8 @@ struct RootView: View {
             openWindowOrSheet(id: WindowID.compare, sheet: .compare)
         case "personas":
             openWindowOrSheet(id: WindowID.personas, sheet: .personas)
+        case "tools":
+            openWindowOrSheet(id: WindowID.tools, sheet: .tools)
         case "settings":
             #if os(macOS)
             openSettings()

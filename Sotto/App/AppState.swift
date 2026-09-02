@@ -10,6 +10,7 @@ final class AppState {
         case library
         case compare
         case personas
+        case tools
         case settings
         case onboarding
 
@@ -34,6 +35,7 @@ final class AppState {
     var compareModelRefs: [ModelRef] = []
     /// Persona to open in the presets window.
     var personaToEdit: UUID?
+    var toolToEdit: UUID?
     var isImportingModel = false
     var isAttachingFile = false
     var showModelLibraryImport = false

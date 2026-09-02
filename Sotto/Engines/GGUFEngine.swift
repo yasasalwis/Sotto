@@ -27,7 +27,10 @@ final class GGUFEngine: InferenceEngine {
         return try await model.countTokens(in: text)
     }
 
-    func generate(_ request: GenerationRequest) -> AsyncThrowingStream<GenerationEvent, Error> {
+    /// llama.cpp has no native tool protocol, so tools are offered in the system prompt and the
+    /// reply is scanned for a `<tool_call>` block. When one appears the stream is stopped, the tool
+    /// runs, its result is appended to the conversation, and generation restarts from there.
+    func generate(_ request: GenerationRequest, toolRunner: ToolRunner?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
                 do {
@@ -42,35 +45,110 @@ final class GGUFEngine: InferenceEngine {
                     options.maxTokens = request.sampling.maxTokens
                     options.seed = request.seed
 
-                    let messages = Self.llamaMessages(for: request)
+                    let toolsEnabled = toolRunner != nil && !request.tools.isEmpty
+                    // Some vocabularies hold <tool_call> as a special token, which is dropped by
+                    // default; render specials so the marker reaches the scanner.
+                    options.rendersSpecialTokens = toolsEnabled
+                    var messages = Self.llamaMessages(
+                        for: request,
+                        systemPrompt: toolsEnabled
+                            ? ToolPromptFormatter.systemPrompt(base: request.systemPrompt, tools: request.tools)
+                            : request.systemPrompt
+                    )
+
                     let clock = ContinuousClock()
                     let start = clock.now
-                    var finished = false
-                    for try await event in model.generate(messages: messages, options: options) {
-                        switch event {
-                        case .promptProcessed(let count, _):
-                            continuation.yield(.promptReady(tokens: count))
-                        case .token(let text):
-                            continuation.yield(.delta(text))
-                        case .finished(let stats):
-                            finished = true
+                    var promptTokens = 0
+                    var generatedTokens = 0
+                    var promptSeconds = 0.0
+                    var generationSeconds = 0.0
+                    var throughput: Double?
+                    var reason = FinishReason.complete
+                    var rounds = 0
+
+                    rounds: while true {
+                        var scanner = ToolCallScanner(tools: request.tools)
+                        var pendingCall: ToolCallRequest?
+                        var roundStats: LlamaGenerationStats?
+
+                        for try await event in model.generate(messages: messages, options: options) {
+                            switch event {
+                            case .promptProcessed(let count, let seconds):
+                                if rounds == 0 {
+                                    promptTokens = count
+                                    promptSeconds = seconds
+                                    continuation.yield(.promptReady(tokens: count))
+                                }
+                            case .token(let text):
+                                guard toolsEnabled else {
+                                    continuation.yield(.delta(text))
+                                    continue
+                                }
+                                let output = scanner.feed(text)
+                                if !output.visible.isEmpty { continuation.yield(.delta(output.visible)) }
+                                if let call = output.call {
+                                    pendingCall = call
+                                }
+                                if let unparsed = output.unparsedBlock {
+                                    // Not a usable call: show it rather than silently swallowing text.
+                                    continuation.yield(.delta(unparsed))
+                                }
+                            case .finished(let stats):
+                                roundStats = stats
+                            }
+                            if pendingCall != nil { break }
+                        }
+
+                        if toolsEnabled, pendingCall == nil {
+                            let output = scanner.flush()
+                            if !output.visible.isEmpty { continuation.yield(.delta(output.visible)) }
+                            if let call = output.call { pendingCall = call }
+                        }
+
+                        if let stats = roundStats {
+                            generatedTokens += stats.generatedTokens
+                            generationSeconds += stats.generationSeconds
+                            if stats.tokensPerSecond > 0 { throughput = stats.tokensPerSecond }
                             runtime.record(stats: stats, contextLength: model.contextLength)
                             Self.updateMeasuredThroughput(record, sample: stats.tokensPerSecond)
-                            let total = Self.seconds(start.duration(to: clock.now))
-                            continuation.yield(.finished(GenerationOutcome(
-                                promptTokens: stats.promptTokens,
-                                generatedTokens: stats.generatedTokens,
-                                promptSeconds: stats.promptSeconds,
-                                generationSeconds: stats.generationSeconds,
-                                totalSeconds: total,
-                                tokensPerSecond: stats.tokensPerSecond > 0 ? stats.tokensPerSecond : nil,
-                                finishReason: Self.map(stats.finishReason)
-                            )))
+                            if pendingCall == nil {
+                                reason = Self.map(stats.finishReason)
+                                break rounds
+                            }
+                        } else if pendingCall == nil {
+                            reason = .cancelled
+                            break rounds
+                        }
+
+                        guard let call = pendingCall, let runner = toolRunner else {
+                            break rounds
+                        }
+                        guard rounds < ToolDefinition.maximumCallsPerTurn else {
+                            reason = .toolLimit
+                            continuation.yield(.delta("\n\n_Stopped after \(ToolDefinition.maximumCallsPerTurn) tool calls._"))
+                            break rounds
+                        }
+                        rounds += 1
+                        continuation.yield(.toolCall(call))
+                        let result = await runner.run(call)
+                        continuation.yield(.toolResult(call, result))
+                        messages.append(LlamaChatMessage(role: "assistant", content: ToolPromptFormatter.callBlock(call)))
+                        messages.append(LlamaChatMessage(role: "user", content: ToolPromptFormatter.responseBlock(result)))
+                        if Task.isCancelled {
+                            reason = .cancelled
+                            break rounds
                         }
                     }
-                    if !finished {
-                        continuation.yield(.finished(GenerationOutcome(promptTokens: nil, generatedTokens: nil, promptSeconds: nil, generationSeconds: 0, totalSeconds: Self.seconds(start.duration(to: clock.now)), tokensPerSecond: nil, finishReason: .cancelled)))
-                    }
+
+                    continuation.yield(.finished(GenerationOutcome(
+                        promptTokens: promptTokens,
+                        generatedTokens: generatedTokens,
+                        promptSeconds: promptSeconds,
+                        generationSeconds: generationSeconds,
+                        totalSeconds: Self.seconds(start.duration(to: clock.now)),
+                        tokensPerSecond: throughput,
+                        finishReason: reason
+                    )))
                     continuation.finish()
                 } catch let error as LlamaError {
                     Log.engine.error("GGUF generation failed: \(error.localizedDescription, privacy: .public)")
@@ -89,9 +167,10 @@ final class GGUFEngine: InferenceEngine {
         }
     }
 
-    static func llamaMessages(for request: GenerationRequest) -> [LlamaChatMessage] {
+    static func llamaMessages(for request: GenerationRequest, systemPrompt: String? = nil) -> [LlamaChatMessage] {
         var messages: [LlamaChatMessage] = []
-        if let system = request.systemPrompt, !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let system = systemPrompt ?? request.systemPrompt
+        if let system, !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             messages.append(LlamaChatMessage(role: "system", content: system))
         }
         for turn in request.turns {

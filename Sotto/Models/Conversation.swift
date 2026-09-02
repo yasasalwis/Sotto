@@ -13,9 +13,6 @@ final class Conversation {
     var temperatureOverride: Double?
     var topPOverride: Double?
     var maxTokensOverride: Int?
-    /// Whether the user opted this conversation into off-device routing. Kept as a
-    /// per-conversation preference even though the current OS offers no such route.
-    var allowsPrivateCloudCompute: Bool
     var isTitleGenerated: Bool
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
@@ -33,7 +30,6 @@ final class Conversation {
         self.updatedAt = createdAt
         self.modelRefRaw = modelRef.rawValue
         self.personaID = personaID
-        self.allowsPrivateCloudCompute = false
         self.isTitleGenerated = false
         self.messages = []
     }

@@ -36,7 +36,7 @@ Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validati
 
 ## Design-to-platform gaps (honest list)
 
-1. **Private Cloud Compute switch** appears in five screens of the design. Apple's FoundationModels framework runs only on device for third-party apps; there is no API to route to PCC. The switch is rendered, disabled, and explained in place. The per-conversation and per-persona "local only" preferences are stored so they can take effect if such an API appears.
+1. **Private Cloud Compute switch** appears in five screens of the design. Apple's FoundationModels framework runs only on device for third-party apps; there is no API to route to PCC, so a switch that can never be turned on was misleading and has been removed from every screen at the owner's request. The persona "local only" flag survives with a real meaning: that persona may only call tools that run on this device.
 2. **"Encrypted with your login keychain"** (Settings copy) — SwiftData has no keychain-bound encryption. The store is protected by iOS Data Protection (`completeUntilFirstUserAuthentication`) and, on macOS, by FileVault. Copy was changed to say so.
 3. **Apple model context** is shown as 8K in the design; the real window is 4,096 tokens and the app shows the real number. Apple's model reports no token counts, so its counter and tok/s are estimates (≈4 chars/token) and labelled `~`.
 4. **Crash reports** — there is no server to send to. The toggle enables MetricKit collection to the app container; users review and share manually.
@@ -63,9 +63,26 @@ Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validati
 5. Compare, personas, settings, onboarding, app lock, export, erase.
 6. Verification: unit tests (LlamaKit + app), integration tests (real inference), UI tests, manual runs on macOS and the iOS Simulator.
 
+## Tools (added after the first build)
+
+A model may call tools. Five built-ins run on device: date and time, calculator, unit converter, text statistics, and a search over the user's own conversations. Users can add HTTPS-request tools (URL template with `{argument}` placeholders, optional JSON dot-path into the answer) and, on macOS, shell-command tools.
+
+| Concern | Decision |
+|---|---|
+| Two engines, one protocol | Apple's model gets native tool calling: each definition is bridged to a `Tool` whose parameters come from a `DynamicGenerationSchema`. llama.cpp has no tool protocol, so tools are described in the system prompt and the reply is scanned for a call block. |
+| Stripped tags | Qwen and friends hold `<tool_call>` in the vocabulary as a special token, which llama.cpp does not render into text. The scanner therefore also treats a reply that is nothing but a JSON object with `name` and `arguments` as a call, tracking brace depth across chunks and ignoring braces inside strings. |
+| Approval | Per tool: ask every time (a card in the chat showing the exact URL or command) or run automatically. "Always allow" flips the tool to automatic. Built-in read-only tools default to automatic; chat search asks. |
+| Injection | HTTPS argument values are percent-encoded with `&=+?#/` removed, so a model cannot add parameters. Shell arguments are single-quoted with embedded quotes escaped. |
+| Runaway loops | Four tool calls per reply, 20 second timeout each, results truncated at 4,000 characters. |
+| Google search | A first-class tool kind rather than a generic HTTPS tool, because the useful output is a short list of titles, snippets and links rather than the raw JSON, and because the credentials deserve a real setup panel. It ships disabled and unusable until the user supplies a key and engine id. The key lives in the keychain keyed by the tool's id. |
+| Persona scope | A persona exposes all tools, a chosen few, or none. `localOnly`, previously decorative, now means the persona never sees a tool that uses the network. |
+| Calculator safety | `NSExpression` raises Objective-C exceptions Swift cannot catch, so arithmetic uses a hand-written recursive-descent parser supporting `+ - * / % ^`, unary minus and parentheses. |
+
 ## Known limitations / next phase
 
 - Two GGUF models in Compare run one after the other (one loaded model at a time); Apple + GGUF run concurrently.
 - Titles come from the first message rather than a model summary (keeps the first response fast).
 - No conversation search; no iCloud sync (by design).
-- Candidates for the next version: per-file SHA-256 in the catalog, conversation search, multiple loaded models on machines with headroom, LoRA adapters, image input for multimodal GGUFs.
+- Tool calls are not replayed when a conversation is retried; the record of the earlier call stays on the message it belonged to.
+- A model may call at most four tools per reply, and they run one at a time.
+- Candidates for the next version: per-file SHA-256 in the catalog, conversation search, multiple loaded models on machines with headroom, LoRA adapters, image input for multimodal GGUFs, and sharing a tool as a file others can import.

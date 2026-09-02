@@ -35,8 +35,6 @@ struct ModelPickerSheet: View {
                 }
                 .padding(.horizontal, 14)
                 HairlineRule(color: Theme.Colors.hairlineSoft).padding(.horizontal, 22).padding(.vertical, 8)
-                PrivateCloudComputeRow(compact: false, allowsOverride: session.conversation.allowsPrivateCloudCompute) { session.conversation.allowsPrivateCloudCompute = $0 }
-                    .padding(.horizontal, 22)
                 Button("Compare two models…") {
                     services.state.comparePrompt = session.draft
                     services.state.compareModelRefs = [session.conversation.modelRef]
@@ -117,42 +115,6 @@ struct ModelGlyph: View {
     }
 }
 
-/// The Private Cloud Compute control. Apple's Foundation Models framework runs entirely on
-/// device and exposes no off-device route to third-party apps, so the switch is shown for the
-/// preference it represents but cannot be turned on.
-struct PrivateCloudComputeRow: View {
-    var compact: Bool
-    var allowsOverride: Bool
-    var onChange: (Bool) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Private Cloud Compute")
-                        .font(Theme.Fonts.sans(compact ? 13 : 15))
-                        .foregroundStyle(compact ? Theme.Colors.muted : Theme.Colors.ink)
-                    if !compact {
-                        Text("Ask before leaving the device")
-                            .font(Theme.Fonts.sans(12))
-                            .foregroundStyle(Theme.Colors.hint)
-                    }
-                }
-                Spacer()
-                Toggle("", isOn: Binding(get: { false }, set: { _ in onChange(false) }))
-                    .toggleStyle(SottoToggleStyle(compact: compact))
-                    .labelsHidden()
-                    .disabled(true)
-                    .accessibilityLabel("Private Cloud Compute, unavailable")
-            }
-            Text("Not available: Apple's on-device model has no off-device route for third-party apps in this OS version. Nothing leaves this device.")
-                .font(Theme.Fonts.sans(compact ? 11 : 12))
-                .foregroundStyle(Theme.Colors.faint)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 /// iOS sheet for choosing the persona of the current chat.
 struct PersonaPickerSheet: View {
     @Bindable var session: ChatSession
@@ -169,12 +131,6 @@ struct PersonaPickerSheet: View {
                     .tracking(-0.5)
                     .foregroundStyle(Theme.Colors.ink)
                 Spacer()
-                Button("Edit") {
-                    dismiss()
-                    services.state.sheet = .personas
-                }
-                .font(Theme.Fonts.sans(14))
-                .foregroundStyle(Theme.Colors.accent)
             }
             .padding(.horizontal, 22)
             ScrollView {

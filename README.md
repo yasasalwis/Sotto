@@ -4,7 +4,9 @@ A local-first chat client for Apple's on-device foundation model and imported op
 
 - **macOS 26.5+ and iOS 26.5+**, SwiftUI + SwiftData, Swift 6 toolchain (Xcode 26.6).
 - **Two inference engines**: Apple Intelligence through the `FoundationModels` framework, and any GGUF file through llama.cpp (Metal on device, CPU in the Simulator).
-- **No accounts, no server, no analytics.** The only network calls are catalog downloads and the optional weekly catalog check, both off by default or user-initiated. Bytes sent are counted and shown on the Privacy page.
+- **Tools the model can call**: five built-ins that run on device (date and time, calculator, unit converter, text statistics, chat search) plus your own Google-search and HTTPS-request tools, each with its own approval rule. A macOS shell-command tool exists for builds distributed outside the App Store.
+- **No accounts, no server, no analytics.** The only network calls are catalog downloads, the optional weekly catalog check, and any HTTPS tool you create yourself. Bytes sent are counted and shown on the Privacy page.
+- **Free.** No in-app purchases, no subscription, no ads, no paid tier.
 
 ## Requirements
 
@@ -40,7 +42,56 @@ xcodebuild -project Sotto.xcodeproj -scheme Sotto -destination 'platform=iOS Sim
 
 Double-clicking a `.gguf` file (macOS) or "Open in Sotto" from Files (iOS) imports the model.
 
-Sotto also registers the `sotto://` URL scheme for Shortcuts and the command line: `sotto://new`, `sotto://library`, `sotto://compare`, `sotto://personas`, `sotto://settings`.
+Sotto also registers the `sotto://` URL scheme for Shortcuts and the command line: `sotto://new`, `sotto://library`, `sotto://compare`, `sotto://personas`, `sotto://tools`, `sotto://settings`.
+
+## Tools
+
+Open **Tools** (⇧⌘T) to see what a model may call. Five built-ins ship enabled and run entirely on device. You can add two more kinds:
+
+| Kind | What it does | Notes |
+|---|---|---|
+| Google search | Searches the web through Google's Programmable Search and returns titles, snippets and links | Needs your own API key and search-engine id; ships disabled |
+| HTTPS request | Calls a URL you write, with `{argument}` placeholders, and returns the body or a value from it | `https` only; argument values are percent-encoded so they cannot add parameters |
+| Shell command | Runs a command with `/bin/zsh` as you | macOS only, **and not in App Store builds** — see below. Arguments are single-quoted before insertion, 20 second limit |
+
+### The shell tool is not in App Store builds
+
+App Review guideline 2.5.2 does not allow an app to execute code that introduces or changes its
+functionality, and under App Sandbox a command would be confined to Sotto's own container
+anyway. So the shell tool is compiled in only when `SOTTO_SHELL_TOOL` is defined, which the
+**Debug** configuration does. Release builds — the ones you archive for the store — have no
+shell tool: it is absent from the kind picker, and the executor refuses a shell tool left in
+the database by an earlier build.
+
+To ship it in a Developer ID build distributed outside the store, add `SOTTO_SHELL_TOOL` to
+`SWIFT_ACTIVE_COMPILATION_CONDITIONS` in that build's Release configuration. Never add it to a
+build destined for App Store Connect.
+
+### Turning on Google search
+
+Sotto ships a **Google search** tool, switched off because it needs two things of your own:
+
+1. A Programmable Search Engine at [programmablesearchengine.google.com](https://programmablesearchengine.google.com/controlpanel/create), set to search the whole web. Copy its **search engine id** (`cx`).
+2. An API key from the [Google Cloud console](https://console.cloud.google.com/apis/credentials) with the **Custom Search API** enabled.
+
+Paste both into Tools › Google search, press **Run once** to check them, then switch the tool on. The free tier allows 100 searches a day. The key is stored in your keychain rather than Sotto's database, so it never appears in an export, and only the words the model searches for are sent to Google.
+
+Each tool has a description (what the model reads), typed parameters, and an approval rule: **ask every time**, which shows a card in the chat before anything runs, or **run automatically**. "Try it" runs the tool immediately with no model involved. Personas can expose all tools, a chosen few, or none; a local-only persona never sees a tool that uses the network. One switch in Tools turns the whole feature off.
+
+Apple's model calls tools through the Foundation Models framework. Imported GGUF models are offered the tools in their system prompt and answer with a tool-call block, which Sotto intercepts before it reaches the transcript.
+
+## App icon
+
+The icon is generated from the same mark the app draws in `LogoMark`, so the two cannot drift:
+
+```bash
+swift Scripts/make-app-icon.swift
+```
+
+It writes the iOS 1024² light, dark and tinted images (opaque, no alpha, full-bleed) and the
+macOS 16–512 @1x/2x images (rounded, with alpha) into `Sotto/Assets.xcassets/AppIcon.appiconset`
+and rewrites that catalog's `Contents.json`. Change `accent` in the script, or the letter, to
+change the mark.
 
 ## Test
 
@@ -64,16 +115,18 @@ Sotto/
   Models/       SwiftData models (Conversation, Message, Persona, InstalledModel, ModelDownload)
   Domain/       pure types: ModelRef, formatters, catalog, token estimator, sampling resolution
   Engines/      InferenceEngine protocol, Apple Intelligence engine, GGUF engine, model runtime, prompt builder
+  Engines/Tools/  tool execution, prompt-based tool calling, the Apple tool bridge, the calculator's parser
   Services/     settings, model store, download manager, attachment reader, diagnostics, app lock, export
-  Features/     Onboarding, Chat, Sidebar, Inspector, Library, Compare, Personas, Settings
+  Features/     Onboarding, Chat, Sidebar, Inspector, Library, Compare, Personas, Tools, Settings
   Resources/    Geist + IBM Plex Mono (OFL), curated model catalog JSON, licences
+  PrivacyInfo.xcprivacy   required-reason API declarations for App Store submission
 Packages/LlamaKit/   Swift wrapper over the llama.cpp C API + the vendored xcframework
-Scripts/             fetch-llama.sh
+Scripts/             fetch-llama.sh, make-app-icon.swift
 ```
 
 Data lives in the app container under `Library/Application Support/Sotto/` (`Sotto.store`, `Models/`, `Staging/`, `Diagnostics/`). The macOS app is sandboxed with user-selected read-only file access and outgoing network only.
 
-See [docs/BLUEPRINT.md](docs/BLUEPRINT.md) for the design decisions, threat model and the design-to-platform gaps, [SECURITY.md](SECURITY.md) for the security model, and [RUNBOOK.md](RUNBOOK.md) for operations.
+See [docs/BLUEPRINT.md](docs/BLUEPRINT.md) for the design decisions, threat model and the design-to-platform gaps, [SECURITY.md](SECURITY.md) for the security model, [RUNBOOK.md](RUNBOOK.md) for operations, and [APP_REVIEW.md](APP_REVIEW.md) for the App Store submission checklist. User-facing pages: [PRIVACY.md](PRIVACY.md) and [SUPPORT.md](SUPPORT.md).
 
 ## Troubleshooting
 

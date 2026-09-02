@@ -192,6 +192,7 @@ struct StatCard: View {
 
 struct GeneralPane: View {
     @Environment(AppServices.self) private var services
+    @Environment(\.openWindow) private var openWindow
     @Query(sort: \InstalledModel.importedAt, order: .reverse) private var installed: [InstalledModel]
     @Query(sort: \Persona.sortOrder) private var personas: [Persona]
 
@@ -220,8 +221,14 @@ struct GeneralPane: View {
                 SettingsRow(title: "Send with Return", detail: "Off: Return adds a line and ⌘Return sends. Option-Return always adds a line.") {
                     Toggle("", isOn: $settings.sendWithEnter).toggleStyle(SottoToggleStyle()).labelsHidden()
                 }
-                SettingsRow(title: "Show token counter", detail: "The used / context figure under the composer.", last: true) {
+                SettingsRow(title: "Show token counter", detail: "The used / context figure under the composer.") {
                     Toggle("", isOn: $settings.showTokenCounter).toggleStyle(SottoToggleStyle()).labelsHidden()
+                }
+                SettingsRow(title: "Let models call tools", detail: "Tools run on this device unless you add one that makes an HTTPS request. Each tool can ask before it runs.", last: true) {
+                    HStack(spacing: 10) {
+                        Button("Manage…") { openTools() }.buttonStyle(SecondaryButtonStyle())
+                        Toggle("", isOn: $settings.toolsEnabled).toggleStyle(SottoToggleStyle()).labelsHidden()
+                    }
                 }
             }
         }
@@ -229,6 +236,16 @@ struct GeneralPane: View {
 }
 
 // MARK: - Models
+
+extension GeneralPane {
+    func openTools() {
+        #if os(macOS)
+        openWindow(id: WindowID.tools)
+        #else
+        services.state.sheet = .tools
+        #endif
+    }
+}
 
 struct ModelsPane: View {
     @Environment(AppServices.self) private var services
@@ -299,23 +316,11 @@ struct PrivacyPane: View {
         @Bindable var settings = services.settings
         VStack(alignment: .leading, spacing: 30) {
             #if os(iOS)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(Format.bytes(settings.bytesSentTotal)).font(Theme.Fonts.mono(30)).foregroundStyle(Theme.Colors.accent)
-                Text("sent off this device, ever").font(Theme.Fonts.sans(14)).foregroundStyle(Theme.Colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .card(radius: 14, background: Theme.Colors.accentBackground, border: Theme.Colors.accentSoft)
+            PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads and tools you start. Everything below is off unless you turn it on.")
             #else
             PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads you start. Everything below is off unless you turn it on.")
             #endif
             SettingsGroup(title: platformNetworkTitle) {
-                VStack(alignment: .leading, spacing: 6) {
-                    PrivateCloudComputeRow(compact: false, allowsOverride: settings.privateCloudCompute) { settings.privateCloudCompute = $0 }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .overlay(alignment: .bottom) { Rectangle().fill(Theme.Colors.hairline).frame(height: 1) }
                 #if os(iOS)
                 SettingsRow(title: "Downloads on Wi-Fi only", detail: "Catalog downloads pause on cellular.") {
                     Toggle("", isOn: $settings.wifiOnlyDownloads).toggleStyle(SottoToggleStyle()).labelsHidden()
@@ -481,6 +486,7 @@ struct ShortcutsPane: View {
         ("⇧⌘L", "Model library"),
         ("⇧⌘K", "Compare two models"),
         ("⇧⌘P", "Presets & personas"),
+        ("⇧⌘T", "Tools"),
         ("⇧⌘I", "Import a GGUF file"),
         ("⌘,", "Settings"),
     ]
@@ -539,7 +545,13 @@ struct AdvancedPane: View {
             SettingsGroup(title: "About") {
                 SettingsRow(title: "Version") { MonoText(Bundle.main.versionLabel, size: 12, color: Theme.Colors.ink) }
                 SettingsRow(title: "Fonts") { MonoText("Geist · IBM Plex Mono (SIL OFL)", size: 12, color: Theme.Colors.ink) }
-                SettingsRow(title: "Inference", last: true) { MonoText("FoundationModels · llama.cpp \(LlamaRuntime.version)", size: 12, color: Theme.Colors.ink) }
+                SettingsRow(title: "Inference") { MonoText("FoundationModels · llama.cpp \(LlamaRuntime.version)", size: 12, color: Theme.Colors.ink) }
+                SettingsRow(title: "Privacy policy") { LinkRow("Open", url: AppLinks.privacyPolicy) }
+                SettingsRow(title: "Support") { LinkRow("Open", url: AppLinks.support) }
+                SettingsRow(title: "Source code", last: true) { LinkRow("Open", url: AppLinks.sourceCode) }
+            }
+            SettingsGroup(title: "Generated text") {
+                SettingsRow(title: "Models are not fact-checked", detail: AppLinks.generatedContentNotice, last: true) { EmptyView() }
             }
         }
         .onAppear { reports = services.diagnostics.reports() }

@@ -23,6 +23,14 @@ struct ChatView: View {
             } else {
                 MessageListView(session: session)
             }
+            if let approval = session.pendingToolApproval {
+                ToolApprovalCard(approval: approval) { decision in
+                    session.resolveToolApproval(decision)
+                }
+                .padding(.horizontal, approvalPadding)
+                .padding(.top, 8)
+                .transition(.opacity)
+            }
             ComposerView(session: session)
         }
         .background(Theme.Colors.surface)
@@ -52,6 +60,7 @@ struct ChatView: View {
             HStack(spacing: 16) {
                 Button("Compare") { openCompare() }
                 Button("Presets") { openWindow(id: WindowID.personas) }
+                Button("Tools") { openWindow(id: WindowID.tools) }
                 Button(services.settings.inspectorVisible ? "Inspector" : "Inspector") {
                     services.settings.inspectorVisible.toggle()
                 }
@@ -113,6 +122,7 @@ struct ChatView: View {
                     Button("New chat") { services.state.newChatRequests += 1 }
                     Button("Model library") { services.state.sheet = .library }
                     Button("Personas") { services.state.sheet = .personas }
+                    Button("Tools") { services.state.sheet = .tools }
                     Button("Settings") { services.state.sheet = .settings }
                     Divider()
                     Button("Delete chat", role: .destructive) {
@@ -136,6 +146,14 @@ struct ChatView: View {
         return label
     }
     #endif
+
+    private var approvalPadding: CGFloat {
+        #if os(macOS)
+        return 44
+        #else
+        return 18
+        #endif
+    }
 
     private func openCompare() {
         services.state.comparePrompt = session.conversation.orderedMessages.last(where: { $0.role == .user })?.text ?? session.draft

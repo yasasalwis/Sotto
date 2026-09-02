@@ -48,6 +48,11 @@ struct EmptyChatView: View {
                 MonoText(statusLine, size: 12, color: Theme.Colors.accent)
             }
             suggestionGrid
+            Text(AppLinks.generatedContentNoticeShort)
+                .font(Theme.Fonts.sans(12))
+                .foregroundStyle(Theme.Colors.faint)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("chat.generatedContentNotice")
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

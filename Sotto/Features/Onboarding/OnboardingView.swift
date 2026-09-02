@@ -68,6 +68,9 @@ struct OnboardingView: View {
                         .disabled(isImporting)
                 }
                 .padding(.top, 20)
+                generatedContentNotice
+                    .frame(maxWidth: 430, alignment: .leading)
+                    .padding(.top, 4)
             }
             .padding(.horizontal, 72)
             .padding(.vertical, 76)
@@ -82,7 +85,7 @@ struct OnboardingView: View {
                     localRow("Analytics", value: "none", accent: false, last: true)
                 }
                 .card(radius: 12, border: Theme.Colors.borderSidebar)
-                Text("Apple's Foundation Models framework runs entirely on this Mac. There is no Private Cloud Compute route for third-party apps, so nothing you type can leave the machine.")
+                Text("Apple's Foundation Models framework runs entirely on this Mac, and imported models run through llama.cpp. Nothing you type leaves the machine unless a tool you set up asks for it.")
                     .font(Theme.Fonts.sans(13))
                     .lineSpacing(5)
                     .foregroundStyle(Theme.Colors.hint)
@@ -144,6 +147,7 @@ struct OnboardingView: View {
             .padding(.top, 56)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             VStack(spacing: 12) {
+                generatedContentNotice
                 Button("Start chatting") { finish() }
                     .buttonStyle(PrimaryButtonStyle(size: 16, horizontalPadding: 16, verticalPadding: 16, radius: 14, fullWidth: true))
                     .accessibilityIdentifier("onboarding.start")
@@ -173,6 +177,19 @@ struct OnboardingView: View {
     #endif
 
     // MARK: - Shared
+
+    /// Sotto neither reviews nor filters what a model writes, and a person meeting the app for
+    /// the first time should be told so before their first message rather than after it.
+    private var generatedContentNotice: some View {
+        Text(AppLinks.generatedContentNotice)
+            .font(Theme.Fonts.sans(12))
+            .lineSpacing(4)
+            .foregroundStyle(Theme.Colors.faint)
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("onboarding.generatedContentNotice")
+    }
 
     private func checklistRow(done: Bool, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {

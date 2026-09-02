@@ -18,6 +18,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("k", modifiers: [.command, .shift])
             Button("Presets & Personas…") { openPersonas() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+            Button("Tools…") { openTools() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
             Divider()
             Button("Import GGUF…") {
                 services.state.isImportingModel = true
@@ -58,6 +60,14 @@ struct AppCommands: Commands {
         openWindow(id: WindowID.compare)
         #else
         services.state.sheet = .compare
+        #endif
+    }
+
+    private func openTools() {
+        #if os(macOS)
+        openWindow(id: WindowID.tools)
+        #else
+        services.state.sheet = .tools
         #endif
     }
 

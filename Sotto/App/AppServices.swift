@@ -49,6 +49,7 @@ final class AppServices {
             lock.lock()
         }
         reconcileLibrary()
+        reconcileInterruptedMessages()
         Log.app.info("Sotto started; persistence=\(settings.storeConversations ? "disk" : "memory", privacy: .public)")
     }
 
@@ -62,6 +63,23 @@ final class AppServices {
             context.delete(record)
         }
         if !missing.isEmpty { try? context.save() }
+    }
+
+    /// A message still marked as streaming means the app quit mid-reply. Mark it stopped so it
+    /// does not sit in the transcript looking like an empty answer forever.
+    func reconcileInterruptedMessages() {
+        let context = container.mainContext
+        let streaming = MessageState.streaming.rawValue
+        let descriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.stateRaw == streaming })
+        guard let interrupted = try? context.fetch(descriptor), !interrupted.isEmpty else { return }
+        for message in interrupted {
+            message.state = .cancelled
+            if message.text.isEmpty {
+                message.errorMessage = "Sotto quit before this answer arrived."
+            }
+        }
+        try? context.save()
+        Log.chat.notice("Marked \(interrupted.count) interrupted message(s) as stopped")
     }
 
     func refreshCatalogIfDue() async {
@@ -78,6 +96,7 @@ final class AppServices {
         }
         try PersistenceController.eraseAll(context: context)
         try store.eraseEverything()
+        KeychainStore.removeAll()
         diagnostics.deleteAllReports()
         settings.resetToDefaults()
         settings.hasCompletedOnboarding = false

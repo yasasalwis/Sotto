@@ -68,12 +68,21 @@ enum CatalogRefresher {
     }
 }
 
-/// A one-shot GET that reports how many bytes the request actually put on the wire.
+/// One-shot requests that report how many bytes actually went on the wire, so the privacy
+/// counter reflects real traffic rather than an estimate.
 enum AccountedURLSession {
     static func get(_ url: URL) async throws -> (Data, Int64) {
         var request = URLRequest(url: url)
         request.setValue("Sotto/1.0 (local-first chat client)", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 20
+        let (data, response, sent) = try await perform(request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return (data, sent)
+    }
+
+    static func perform(_ request: URLRequest) async throws -> (Data, URLResponse, Int64) {
         return try await withCheckedThrowingContinuation { continuation in
             let box = TaskBox()
             let completion = CompletionBox(continuation: continuation, box: box)
@@ -83,11 +92,11 @@ enum AccountedURLSession {
                     completion.continuation.resume(throwing: error)
                     return
                 }
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data else {
+                guard let response, let data else {
                     completion.continuation.resume(throwing: URLError(.badServerResponse))
                     return
                 }
-                completion.continuation.resume(returning: (data, sent))
+                completion.continuation.resume(returning: (data, response, sent))
             }
             box.task?.resume()
         }
@@ -98,7 +107,7 @@ enum AccountedURLSession {
     }
 
     private struct CompletionBox: @unchecked Sendable {
-        let continuation: CheckedContinuation<(Data, Int64), Error>
+        let continuation: CheckedContinuation<(Data, URLResponse, Int64), Error>
         let box: TaskBox
     }
 }

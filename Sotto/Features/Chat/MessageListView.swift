@@ -133,6 +133,14 @@ struct MessageRow: View {
                     MonoText(assistantCaption, size: 11, color: Theme.Colors.hint)
                 }
             }
+            if !message.toolCalls.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(message.toolCalls) { record in
+                        ToolCallRow(record: record)
+                    }
+                }
+                .frame(maxWidth: assistantMaxWidth, alignment: .leading)
+            }
             if !message.text.isEmpty {
                 MarkdownBlocksView(text: message.text, fontSize: 15, lineSpacing: assistantLineSpacing)
                     .frame(maxWidth: assistantMaxWidth, alignment: .leading)

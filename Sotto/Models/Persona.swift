@@ -1,6 +1,22 @@
 import Foundation
 import SwiftData
 
+enum PersonaToolMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case all
+    case selected
+    case none
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "All enabled tools"
+        case .selected: return "Only chosen tools"
+        case .none: return "No tools"
+        }
+    }
+}
+
 @Model
 final class Persona {
     @Attribute(.unique) var id: UUID
@@ -20,6 +36,10 @@ final class Persona {
     var updatedAt: Date
     var usageCount: Int
     var sortOrder: Int
+    /// Which tools this persona lets the model call.
+    var toolModeRaw: String = PersonaToolMode.all.rawValue
+    /// Tool ids used when `toolMode` is `.selected`.
+    var toolIDs: [UUID] = []
 
     init(
         id: UUID = UUID(),
@@ -55,6 +75,22 @@ final class Persona {
     var modelRef: ModelRef? {
         get { modelRefRaw.flatMap(ModelRef.init(rawValue:)) }
         set { modelRefRaw = newValue?.rawValue }
+    }
+
+    var toolMode: PersonaToolMode {
+        get { PersonaToolMode(rawValue: toolModeRaw) ?? .all }
+        set { toolModeRaw = newValue.rawValue }
+    }
+
+    /// The subset of `available` this persona exposes to the model. A local-only persona
+    /// never sees tools that put bytes on the network.
+    func tools(from available: [ToolDefinition]) -> [ToolDefinition] {
+        let permitted = localOnly ? available.filter { !$0.usesNetwork } : available
+        switch toolMode {
+        case .all: return permitted
+        case .none: return []
+        case .selected: return permitted.filter { toolIDs.contains($0.id) }
+        }
     }
 
     static let maximumNameLength = 60

@@ -62,6 +62,31 @@ struct LogoMark: View {
     }
 }
 
+/// Opens a public page in the browser. Used for the privacy, support and source links that
+/// App Review and the App Store listing point at.
+struct LinkRow: View {
+    let title: String
+    let url: URL
+
+    init(_ title: String, url: URL) {
+        self.title = title
+        self.url = url
+    }
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(spacing: 4) {
+                MonoText(title, size: 12, color: Theme.Colors.accent)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.accent)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) \(url.host() ?? "link")")
+    }
+}
+
 struct StatusDot: View {
     var color: Color = Theme.Colors.accent
     var size: CGFloat = 6
