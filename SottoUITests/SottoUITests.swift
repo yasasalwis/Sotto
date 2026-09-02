@@ -1,41 +1,53 @@
-//
-//  SottoUITests.swift
-//  SottoUITests
-//
-//  Created by Yasas Alwis on 2026-09-02.
-//
-
 import XCTest
 
 final class SottoUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+        app = XCUIApplication()
+        // Fresh onboarding, in-memory store, no lock: deterministic regardless of the host's state.
+        app.launchArguments += ["-hasCompletedOnboarding", "NO", "-storeConversations", "NO", "-requireAppLock", "NO"]
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
+    func testOnboardingLeadsToEmptyChat() throws {
         app.launch()
+        let start = app.descendants(matching: .any).matching(identifier: "onboarding.start").firstMatch
+        if !start.waitForExistence(timeout: 10) {
+            let attachment = XCTAttachment(string: app.debugDescription)
+            attachment.name = "Accessibility tree"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            print("AXTREE-BEGIN\n" + app.debugDescription + "\nAXTREE-END")
+        }
+        XCTAssertTrue(start.exists, "Onboarding should offer a start button")
+        start.tap()
+        XCTAssertTrue(app.staticTexts["What are we working on?"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "composer.editor").firstMatch.waitForExistence(timeout: 5))
+    }
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+    @MainActor
+    func testSendingProducesAResponseOrAClearError() throws {
+        app.launch()
+        let start = app.descendants(matching: .any).matching(identifier: "onboarding.start").firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 10))
+        start.tap()
+        let editor = app.descendants(matching: .any).matching(identifier: "composer.editor").firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.tap()
+        editor.typeText("Say hello in one word.")
+        let send = app.descendants(matching: .any).matching(identifier: "composer.send").firstMatch
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        send.tap()
+        // Either the on-device model answers (copy chip appears) or the engine reports why it can't.
+        let answered = app.descendants(matching: .any).matching(identifier: "message.copy").firstMatch.waitForExistence(timeout: 90)
+        let failed = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Apple Intelligence' OR label CONTAINS[c] 'model'")).firstMatch.exists
+        XCTAssertTrue(answered || failed, "After sending, the chat must show an answer or an explanatory error")
     }
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }

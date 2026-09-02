@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: Cache llama.cpp artifacts
+        uses: actions/cache@v4
+        with:
+          path: Packages/LlamaKit/.artifacts
+          key: llama-${{ hashFiles('Scripts/fetch-llama.sh') }}
+
+      - name: Vendor llama.cpp (verifies SHA-256, builds Simulator slice)
+        run: Scripts/fetch-llama.sh
+
+      - name: LlamaKit unit tests
+        run: cd Packages/LlamaKit && swift test
+
+      - name: Build and test (macOS)
+        run: |
+          xcodebuild -project Sotto.xcodeproj -scheme Sotto \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            -only-testing:SottoTests test
+
+      - name: Build and test (iOS Simulator)
+        run: |
+          xcodebuild -project Sotto.xcodeproj -scheme Sotto \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:SottoTests test
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

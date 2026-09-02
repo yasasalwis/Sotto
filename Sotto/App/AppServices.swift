@@ -1,0 +1,88 @@
+import Foundation
+import Observation
+import SwiftData
+import os
+
+/// Everything long-lived the UI needs, built once at launch and injected through the environment.
+@Observable
+final class AppServices {
+    let settings: SettingsStore
+    let store: ModelStore
+    let container: ModelContainer
+    let runtime: ModelRuntime
+    let downloads: DownloadManager
+    let diagnostics: DiagnosticsCollector
+    let lock: AppLock
+    let catalog: ModelCatalog
+    let state: AppState
+    /// Set when the on-disk store could not be opened and an in-memory store is in use instead.
+    let persistenceFailure: String?
+
+    init() {
+        let settings = SettingsStore()
+        let store = ModelStore()
+        let catalog = (try? ModelCatalog.loadBundled()) ?? ModelCatalog(version: 0, updatedAt: "", entries: [])
+        var failure: String?
+        let container: ModelContainer
+        do {
+            container = try PersistenceController.makeContainer(inMemory: !settings.storeConversations, baseDirectory: store.baseDirectory)
+        } catch {
+            Log.persistence.error("Opening the store failed: \(error.localizedDescription, privacy: .public)")
+            failure = error.localizedDescription
+            container = try! PersistenceController.makeContainer(inMemory: true, baseDirectory: store.baseDirectory)
+        }
+        PersistenceController.seedIfNeeded(context: container.mainContext)
+
+        self.settings = settings
+        self.store = store
+        self.container = container
+        self.catalog = catalog
+        self.persistenceFailure = failure
+        self.runtime = ModelRuntime(store: store, settings: settings)
+        self.downloads = DownloadManager(store: store, settings: settings, container: container, catalog: catalog)
+        self.diagnostics = DiagnosticsCollector(directory: store.diagnosticsDirectory)
+        self.lock = AppLock()
+        self.state = AppState()
+
+        diagnostics.setEnabled(settings.crashReports)
+        if settings.requireAppLock, AppLock.isAvailable {
+            lock.lock()
+        }
+        reconcileLibrary()
+        Log.app.info("Sotto started; persistence=\(settings.storeConversations ? "disk" : "memory", privacy: .public)")
+    }
+
+    /// Drops records whose files vanished and orphaned files nothing references.
+    func reconcileLibrary() {
+        let context = container.mainContext
+        guard let records = try? context.fetch(FetchDescriptor<InstalledModel>()) else { return }
+        let missing = store.reconcile(records: records)
+        for record in missing {
+            Log.models.notice("Model file missing for \(record.name, privacy: .public); removing record")
+            context.delete(record)
+        }
+        if !missing.isEmpty { try? context.save() }
+    }
+
+    func refreshCatalogIfDue() async {
+        guard CatalogRefresher.isDue(settings: settings) else { return }
+        _ = await CatalogRefresher.refresh(catalog: catalog, settings: settings)
+    }
+
+    /// "Erase all data": conversations, personas (re-seeded), models, downloads, diagnostics and preferences.
+    func eraseEverything() throws {
+        Task { await runtime.unload() }
+        let context = container.mainContext
+        if let downloads = try? context.fetch(FetchDescriptor<ModelDownload>()) {
+            for download in downloads { self.downloads.cancel(download) }
+        }
+        try PersistenceController.eraseAll(context: context)
+        try store.eraseEverything()
+        diagnostics.deleteAllReports()
+        settings.resetToDefaults()
+        settings.hasCompletedOnboarding = false
+        PersistenceController.seedIfNeeded(context: context)
+        state.selectedConversationID = nil
+        Log.privacy.notice("All local data erased by user")
+    }
+}
