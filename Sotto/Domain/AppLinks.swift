@@ -3,11 +3,11 @@ import Foundation
 /// The public pages App Review and the App Store listing point at, in one place so the
 /// in-app links, the store listing and the review notes cannot drift apart.
 ///
-/// Replace these with your own domain if you move the pages off GitHub; nothing else in the
-/// app hard-codes a URL.
+/// The privacy policy and support pages live on sotto.eonix.lk; the source stays on GitHub.
+/// Replace these if the pages move again — nothing else in the app hard-codes a URL.
 enum AppLinks {
-    static let privacyPolicy = URL(string: "https://github.com/yasasalwis/Sotto/blob/main/PRIVACY.md")!
-    static let support = URL(string: "https://github.com/yasasalwis/Sotto/blob/main/SUPPORT.md")!
+    static let privacyPolicy = URL(string: "https://sotto.eonix.lk/privacy")!
+    static let support = URL(string: "https://sotto.eonix.lk/support")!
     static let sourceCode = URL(string: "https://github.com/yasasalwis/Sotto")!
 
     /// Shown wherever a person first meets generated text. Sotto runs models on the device and

@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Email yasaslive@gmail.com with steps to reproduce. Please don't open public issues for vulnerabilities. You'll get an acknowledgement within 3 working days.
+Email contact@eonix.lk with steps to reproduce. Please don't open public issues for vulnerabilities. You'll get an acknowledgement within 3 working days.
 
 ## Security model
 

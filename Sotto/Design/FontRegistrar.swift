@@ -5,7 +5,7 @@ import os
 /// Registers the bundled Geist and IBM Plex Mono faces with CoreText at launch so
 /// `Font.custom` resolves them on every platform without Info.plist font lists.
 enum FontRegistrar {
-    private static let logger = Logger(subsystem: "lk.eonix.Sotto", category: "fonts")
+    private static let logger = Logger(subsystem: "lk.eonix.sotto", category: "fonts")
     private static var registered = false
 
     static func registerBundledFonts() {

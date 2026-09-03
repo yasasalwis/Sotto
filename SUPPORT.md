@@ -4,7 +4,7 @@ Sotto runs language models on your own device. There is no account and no server
 nothing to sign in to and nothing to be locked out of. If something is not working, it is
 happening on your device, and the answers below cover the cases that come up most.
 
-**Contact:** [yasaslive@gmail.com](mailto:yasaslive@gmail.com) — expect a reply within three
+**Contact:** [contact@eonix.lk](mailto:contact@eonix.lk) — expect a reply within three
 working days.
 **Security reports:** please email rather than opening a public issue. See
 [SECURITY.md](SECURITY.md).
@@ -147,7 +147,7 @@ background.
 
 ## Reporting a bug
 
-Email [yasaslive@gmail.com](mailto:yasaslive@gmail.com) with what you did, what you expected
+Email [contact@eonix.lk](mailto:contact@eonix.lk) with what you did, what you expected
 and what happened. If Sotto crashed and you have turned on **Settings › Privacy › Crash
 reports**, the report is waiting in **Settings › Advanced** for you to read and attach — it
 stays on your device until you choose to send it.

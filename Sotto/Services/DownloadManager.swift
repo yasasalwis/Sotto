@@ -21,7 +21,7 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
     }
 
-    static let sessionIdentifier = "lk.eonix.Sotto.downloads"
+    static let sessionIdentifier = "lk.eonix.sotto.downloads"
 
     private(set) var live: [UUID: LiveProgress] = [:]
     var backgroundCompletionHandler: (() -> Void)?
@@ -103,8 +103,8 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         // deleted, which is why the task entry is cleared before the record is looked up.
         let id = record.id
         task.cancel { [weak self] data in
+            guard let manager = self else { return }
             Task { @MainActor in
-                guard let manager = self else { return }
                 manager.tasks[id] = nil
                 guard let record = manager.record(withID: id) else { return }
                 record.resumeData = data

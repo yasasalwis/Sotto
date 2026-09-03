@@ -102,5 +102,5 @@ with an app update.
 
 ## Contact
 
-Questions about this policy, or about privacy in Sotto: **yasaslive@gmail.com**.
+Questions about this policy, or about privacy in Sotto: **contact@eonix.lk**.
 Security reports: see [SECURITY.md](SECURITY.md).

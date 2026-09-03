@@ -521,9 +521,9 @@ struct AdvancedPane: View {
     var body: some View {
         @Bindable var settings = services.settings
         VStack(alignment: .leading, spacing: 30) {
-            PaneHeader(title: "Advanced", subtitle: "Diagnostics stay on this device. Logs go to the unified log under the subsystem lk.eonix.Sotto and never include prompts.")
+            PaneHeader(title: "Advanced", subtitle: "Diagnostics stay on this device. Logs go to the unified log under the subsystem lk.eonix.sotto and never include prompts.")
             SettingsGroup {
-                SettingsRow(title: "Verbose logging", detail: "Adds per-request timing to the unified log. Read it with Console or `log stream --predicate 'subsystem == \"lk.eonix.Sotto\"'`.") {
+                SettingsRow(title: "Verbose logging", detail: "Adds per-request timing to the unified log. Read it with Console or `log stream --predicate 'subsystem == \"lk.eonix.sotto\"'`.") {
                     Toggle("", isOn: $settings.verboseLogging).toggleStyle(SottoToggleStyle()).labelsHidden()
                 }
                 SettingsRow(title: "Reset preferences", detail: "Restores every setting to its default. Conversations and models are untouched.", last: true) {

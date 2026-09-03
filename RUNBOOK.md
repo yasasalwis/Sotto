@@ -28,10 +28,10 @@ Edit `Sotto/Resources/Catalog/models.json`. Every entry needs a working `https:/
 
 ## Diagnosing user reports
 
-- Logs: `log stream --predicate 'subsystem == "lk.eonix.Sotto"' --level info` (or Console.app). Categories: app, chat, models, downloads, engine, persistence, privacy, security, llama.cpp.
+- Logs: `log stream --predicate 'subsystem == "lk.eonix.sotto"' --level info` (or Console.app). Categories: app, chat, models, downloads, engine, persistence, privacy, security, llama.cpp.
 - Model won't load: look for `Failed to load` in `engine`; the message includes llama.cpp's reason. Common: unsupported architecture in this llama.cpp tag, or memory.
 - Download failures: category `downloads`. Resume data survives relaunch; "Retry" restarts from the resume point.
-- Store won't open: the app falls back to an in-memory store and shows an alert. The store is at `~/Library/Containers/lk.eonix.Sotto/Data/Library/Application Support/Sotto/Sotto.store` (macOS). Move it aside to recover.
+- Store won't open: the app falls back to an in-memory store and shows an alert. The store is at `~/Library/Containers/lk.eonix.sotto/Data/Library/Application Support/Sotto/Sotto.store` (macOS). Move it aside to recover.
 - Crash diagnostics: only if the user enabled Crash reports; JSON files in `.../Sotto/Diagnostics/`, listed in Settings › Advanced.
 
 ## Diagnosing a misbehaving tool
@@ -52,7 +52,7 @@ Edit `Sotto/Resources/Catalog/models.json`. Every entry needs a working `https:/
 2. Watch the record move in the app's own database:
 
    ```
-   sqlite3 ~/Library/Containers/lk.eonix.Sotto/Data/Library/Application\ Support/Sotto/Sotto.store \
+   sqlite3 ~/Library/Containers/lk.eonix.sotto/Data/Library/Application\ Support/Sotto/Sotto.store \
      "select ZNAME, ZSTATERAW, ZRECEIVEDBYTES, ZERRORMESSAGE from ZMODELDOWNLOAD;"
    ```
 

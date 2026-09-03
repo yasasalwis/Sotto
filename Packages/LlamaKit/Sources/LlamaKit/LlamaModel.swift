@@ -3,8 +3,8 @@ import llama
 import os
 import Synchronization
 
-private let modelLogger = Logger(subsystem: "lk.eonix.Sotto", category: "LlamaModel")
-private let loaderQueue = DispatchQueue(label: "lk.eonix.Sotto.llama.loader", qos: .userInitiated)
+private let modelLogger = Logger(subsystem: "lk.eonix.sotto", category: "LlamaModel")
+private let loaderQueue = DispatchQueue(label: "lk.eonix.sotto.llama.loader", qos: .userInitiated)
 
 /// Cooperative cancellation shared between Swift and the llama.cpp abort callback.
 final class CancellationFlag: Sendable {
@@ -47,7 +47,7 @@ public final class LlamaModel: @unchecked Sendable {
     public let threadCount: Int
     public let gpuLayers: Int
 
-    private let queue = DispatchQueue(label: "lk.eonix.Sotto.llama.model", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "lk.eonix.sotto.llama.model", qos: .userInitiated)
     private var model: OpaquePointer?
     private var context: OpaquePointer?
     private let vocab: OpaquePointer

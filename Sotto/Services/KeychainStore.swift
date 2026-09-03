@@ -5,7 +5,7 @@ import Security
 /// Stores small secrets (API keys a user types into a tool) in the login keychain rather than the
 /// app database, so they are not carried in exports or database backups.
 enum KeychainStore {
-    static let service = "lk.eonix.Sotto.tools"
+    static let service = "lk.eonix.sotto.tools"
 
     @discardableResult
     static func set(_ value: String, for account: String) -> Bool {

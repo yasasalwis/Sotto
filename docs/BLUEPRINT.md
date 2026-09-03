@@ -16,7 +16,7 @@ A local-first chat client. Two engines: Apple's on-device foundation model (`Fou
 | Open models | llama.cpp `b10759` xcframework via a local Swift package (`Packages/LlamaKit`) | Only production-grade GGUF runtime with Metal. Pinned + checksummed; Simulator slice built from source because upstream doesn't ship one. |
 | Downloads | Background `URLSession`, resume data persisted in SwiftData | Multi-GB files must survive backgrounding and relaunch. |
 | Fonts | Geist + IBM Plex Mono bundled (OFL) | The design's type is part of its identity. |
-| Logging | `os.Logger`, subsystem `lk.eonix.Sotto` | Unified log, no prompt contents. |
+| Logging | `os.Logger`, subsystem `lk.eonix.sotto` | Unified log, no prompt contents. |
 
 ## Threat model
 

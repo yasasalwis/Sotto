@@ -2,7 +2,7 @@ import Foundation
 import llama
 import os
 
-private let llamaLogger = Logger(subsystem: "lk.eonix.Sotto", category: "llama.cpp")
+private let llamaLogger = Logger(subsystem: "lk.eonix.sotto", category: "llama.cpp")
 
 /// Forwards llama.cpp's C logging into the unified logging system. Model weights,
 /// prompts and completions never pass through this path; llama.cpp only logs

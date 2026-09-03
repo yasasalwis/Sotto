@@ -30,8 +30,9 @@ quietly undo one.
 | Model download host pinned to `huggingface.co` at runtime | `ModelCatalog.validate()` |
 | Menu bar item is a normal `MenuBarExtra`, not a background-only app | `SottoApp`; `LSUIElement` is deliberately unset, so Sotto keeps its Dock icon and windows |
 
-> **`AppLinks` points at GitHub.** If you move the privacy and support pages to your own
-> domain, change `Sotto/Domain/AppLinks.swift` and the URLs in App Store Connect together.
+> **`AppLinks` points at `sotto.eonix.lk` for the privacy policy and support pages, and at
+> GitHub for the source.** If a page moves, change `Sotto/Domain/AppLinks.swift` and the URLs
+> in App Store Connect together.
 
 ### The shell tool
 
@@ -83,8 +84,8 @@ Tool API keys stay in the keychain.
 - **Does your app collect data?** → **No**
 - **Tracking** → **No**. Sotto does not track, does not use an advertising identifier and does
   not share data with data brokers.
-- **Privacy policy URL** → `https://github.com/yasasalwis/Sotto/blob/main/PRIVACY.md`
-  (or your own domain, kept in step with `AppLinks.privacyPolicy`).
+- **Privacy policy URL** → `https://sotto.eonix.lk/privacy`
+  (kept in step with `AppLinks.privacyPolicy`).
 
 > A model download and the optional catalog check contact `huggingface.co`, and the optional
 > search tool contacts Google under the person's own API key. None of that is data *you*
@@ -141,7 +142,7 @@ be. Do not add weights to the app bundle.
 - [ ] The description says the app is free and does not mention any price, tier or upgrade.
 - [ ] The description does not promise the app filters or verifies model output.
 - [ ] Screenshots are from the real app at required sizes, with no placeholder content.
-- [ ] Support URL → `https://github.com/yasasalwis/Sotto/blob/main/SUPPORT.md` (or your domain).
+- [ ] Support URL → `https://sotto.eonix.lk/support` (kept in step with `AppLinks.support`).
 
 ---
 
@@ -189,8 +190,8 @@ be. Do not add weights to the app bundle.
 > turning **Show in menu bar** off in Settings › General restores quit-on-close. Sotto is not a
 > background-only app: it keeps its Dock icon and its windows, and `LSUIElement` is not set.
 >
-> **Privacy policy:** https://github.com/yasasalwis/Sotto/blob/main/PRIVACY.md
-> **Support:** https://github.com/yasasalwis/Sotto/blob/main/SUPPORT.md
+> **Privacy policy:** https://sotto.eonix.lk/privacy
+> **Support:** https://sotto.eonix.lk/support
 
 ---
 
@@ -201,8 +202,6 @@ Not blockers — decisions that are yours.
 - **Deployment target is iOS 26.5 / macOS 26.5.** That is a very narrow device base for a 1.0.
   Nothing in App Review objects, but it decides who can install the app. Lowering it means
   checking the Foundation Models availability guards and re-testing.
-- **The privacy and support pages are GitHub blob URLs.** They work, and reviewers accept
-  them. A page on your own domain reads better on the listing.
 - **Reviewers may not have Apple Intelligence enabled**, in which case the first thing they
   meet is a 380 MB download. The review notes above steer them to the smallest model; keeping
   that entry in the catalog and first in the list is worth doing deliberately.
@@ -214,5 +213,42 @@ Not blockers — decisions that are yours.
 ## 6. After approval
 
 - Tag the commit `vX.Y.Z` (see [RUNBOOK.md](RUNBOOK.md)).
-- Keep `PRIVACY.md`, `SUPPORT.md` and the App Store Connect URLs in step. A privacy policy URL
-  that 404s is grounds for removal.
+- Keep `PRIVACY.md`, the page served at `https://sotto.eonix.lk/privacy`, `SUPPORT.md` and the
+  App Store Connect URLs in step. A privacy policy URL that 404s is grounds for removal.
+
+---
+
+## 7. App Store Connect — what is already filled in
+
+Recorded 3 September 2026. Values live in App Store Connect; this section is a mirror so a
+later change can be spotted.
+
+| Field | Value |
+|---|---|
+| Apple ID | `6808138863` |
+| Bundle ID | `lk.eonix.sotto` (App ID registered on the developer portal as "Sotto") |
+| Listing name | `Sotto – On Device AI` (en dash; plain "Sotto" is taken on the App Store) |
+| Subtitle | `Private AI that runs offline` |
+| SKU | `sotto-001` |
+| Platforms | iOS + macOS, one record |
+| Category | Productivity (primary), Utilities (secondary) |
+| Content rights | Contains/accesses third-party content, rights held — the catalog links to publishers' own weights |
+| Price | Free, all 175 countries or regions |
+| App Privacy | **Data Not Collected**, published. Privacy policy URL set |
+| Age rating | Calculated 13+, **overridden to 18+** (19+ Brazil and Korea; 17+ on OS earlier than 26) |
+| Sign-in required | No, on both platforms |
+| Screenshots | iPhone 6.9" ×4, iPad 13" ×3, Mac ×5 — all from the real app |
+| Review notes | Section 4 of this file, pasted into both platforms |
+
+> The app's own name on the device is still **Sotto** — `CFBundleDisplayName` is untouched.
+> Only the store listing carries the longer name.
+
+### Still outstanding before Submit for Review
+
+- [ ] **Upload a build.** Both archives validate locally but nothing is uploaded yet. Needs an
+      Apple Distribution certificate; Xcode creates one on first App Store export.
+- [ ] **App Review contact** — first name, last name, phone and email, on both the iOS and the
+      macOS version page. Required to submit.
+- [ ] **`AppLinks.sourceCode`** points at `https://github.com/yasasalwis/Sotto`, which returns
+      404. It is a live link in Settings › About, so it 404s for users. Make the repository
+      public, point it elsewhere, or drop the link.
