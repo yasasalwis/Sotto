@@ -292,33 +292,48 @@ enum ShellTool {
 // MARK: - Built-in tools
 
 enum BuiltInTools {
+    /// Dispatch only: every case is one line so this stays readable as tools are added, and the
+    /// switch stays exhaustive so a new `BuiltInToolID` cannot ship without an implementation.
     static func run(_ tool: BuiltInToolID, arguments: [String: Any], context: ModelContext) throws -> String {
         switch tool {
-        case .currentDateTime:
-            return currentDateTime()
-        case .calculator:
-            guard let expression = ToolTemplate.stringValue(arguments["expression"]) else {
-                throw ToolExecutionError.invalidArguments("expression")
-            }
-            return try calculate(expression)
-        case .unitConverter:
-            guard let value = ToolTemplate.doubleValue(arguments["value"]),
-                  let from = ToolTemplate.stringValue(arguments["from"]),
-                  let to = ToolTemplate.stringValue(arguments["to"]) else {
-                throw ToolExecutionError.invalidArguments("value, from and to are required")
-            }
-            return try convert(value: value, from: from, to: to)
-        case .textStatistics:
-            guard let text = ToolTemplate.stringValue(arguments["text"]) else {
-                throw ToolExecutionError.invalidArguments("text")
-            }
-            return textStatistics(text)
-        case .searchConversations:
-            guard let query = ToolTemplate.stringValue(arguments["query"]) else {
-                throw ToolExecutionError.invalidArguments("query")
-            }
-            return searchConversations(query, context: context)
+        case .currentDateTime: return currentDateTime()
+        case .calculator: return try calculate(ToolArguments.text(arguments, "expression"))
+        case .unitConverter: return try convertUnits(arguments)
+        case .textStatistics: return textStatistics(try ToolArguments.text(arguments, "text"))
+        case .searchConversations: return searchConversations(try ToolArguments.text(arguments, "query"), context: context)
+
+        case .dateDifference: return try DateTools.difference(arguments)
+        case .dateShift: return try DateTools.shift(arguments)
+        case .timeInZone: return try DateTools.timeInZone(arguments)
+        case .calendarFacts: return try DateTools.facts(arguments)
+
+        case .transformText: return try TextTools.transform(arguments)
+        case .replaceText: return try TextTools.replace(arguments)
+        case .extractMatches: return try TextTools.extract(arguments)
+        case .sortLines: return try TextTools.sortLines(arguments)
+        case .wordFrequency: return try TextTools.wordFrequency(arguments)
+        case .compareTexts: return try TextTools.compare(arguments)
+
+        case .formatJSON: return try DataTools.formatJSON(arguments)
+        case .queryJSON: return try DataTools.queryJSON(arguments)
+        case .summarizeCSV: return try DataTools.summariseCSV(arguments)
+        case .describeNumbers: return try DataTools.describeNumbers(arguments)
+        case .percentage: return try DataTools.percentage(arguments)
+        case .convertBase: return try DataTools.convertBase(arguments)
+
+        case .encodeText: return try EncodingTools.encode(arguments)
+        case .hashText: return try EncodingTools.hash(arguments)
+        case .randomNumber: return try EncodingTools.random(arguments)
+        case .estimateTokens: return try EncodingTools.estimateTokens(arguments)
         }
+    }
+
+    private static func convertUnits(_ arguments: [String: Any]) throws -> String {
+        try convert(
+            value: ToolArguments.number(arguments, "value"),
+            from: ToolArguments.text(arguments, "from"),
+            to: ToolArguments.text(arguments, "to")
+        )
     }
 
     static func currentDateTime(now: Date = .now) -> String {

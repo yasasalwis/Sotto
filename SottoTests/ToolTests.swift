@@ -201,8 +201,9 @@ struct ToolPromptFormatterTests {
         let spec = ToolSpec(name: "a", description: "b", parameters: [])
         let text = ToolPromptFormatter.instructions(for: [spec])
         #expect(text.contains(ToolPromptFormatter.usageRule))
-        #expect(ToolPromptFormatter.usageRule.contains("greetings"))
-        #expect(ToolPromptFormatter.usageRule.contains("Answer directly"))
+        // The two traps a small model actually falls into, measured against the system model.
+        #expect(ToolPromptFormatter.usageRule.contains("greeting is never a reason"))
+        #expect(ToolPromptFormatter.usageRule.contains("in one word"))
     }
 
     @Test func appleInstructionsCarryTheSameRule() {
@@ -211,7 +212,7 @@ struct ToolPromptFormatterTests {
             toolRule: ToolPromptFormatter.usageRule
         )
         #expect(withTools.hasPrefix("Be brief."))
-        #expect(withTools.contains("Answer directly"))
+        #expect(withTools.contains("greeting is never a reason"))
 
         // Without tools the persona prompt is passed through untouched.
         #expect(AppleIntelligenceEngine.instructionsText(systemPrompt: "Be brief.", toolRule: nil) == "Be brief.")
@@ -220,9 +221,16 @@ struct ToolPromptFormatterTests {
         #expect(AppleIntelligenceEngine.instructionsText(systemPrompt: "  ", toolRule: nil).isEmpty)
     }
 
+    /// Every shipped description follows the same two-part shape: the requests that should reach
+    /// the tool, then the near misses that should not. The negative half is the half that earns
+    /// its tokens — a 3B model reaches for a tool it merely recognises, so the wording has to name
+    /// the lure ("in one word" is not a request to count) rather than only the intended use.
     @Test func everyShippedToolSaysWhenNotToCallIt() {
         for tool in ToolDefinition.builtInSeeds() {
-            #expect(tool.summary.contains("only when"), "\(tool.name) does not limit when it is called")
+            #expect(tool.summary.contains("Use it when") || tool.summary.contains("Use it only when"),
+                    "\(tool.name) does not say when to call it")
+            #expect(tool.summary.contains("Do not call it") || tool.summary.contains("Never call it"),
+                    "\(tool.name) does not say when to leave it alone")
             #expect(tool.seededSummary == tool.summary)
         }
     }
@@ -298,14 +306,18 @@ struct ToolDefinitionTests {
             #expect(ToolDefinition.isValidName(seed.name))
             #expect(!seed.summary.isEmpty)
         }
-        // Everything that runs on device ships enabled; the one that reaches the network does not.
+        // Everything that runs on device is ready to run; the one that reaches the network is not.
         let onDevice = seeds.filter { $0.kind == .builtIn }
-        #expect(onDevice.count == BuiltInToolID.allCases.count)
         for seed in onDevice {
             #expect(!seed.usesNetwork)
-            #expect(seed.isEnabled)
             #expect(!seed.needsSetup)
         }
+        // Four tools ship switched on. Text statistics is off because the system model reached
+        // for it on prompts like "say hello in one word", which is noise rather than help; the
+        // twenty tools added later are off because Apple's model takes every offered schema into
+        // a 4,096-token window and fails outright once too many are there.
+        let onByDefault = Set(onDevice.filter(\.isEnabled).map(\.name))
+        #expect(onByDefault == ["current_datetime", "calculate", "convert_units", "search_conversations"])
         let networked = seeds.filter(\.usesNetwork)
         #expect(networked.count == 1)
         #expect(networked.allSatisfy { !$0.isEnabled && $0.approval == .askEveryTime })

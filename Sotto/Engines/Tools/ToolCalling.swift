@@ -11,7 +11,7 @@ enum ToolPromptFormatter {
 
     /// Shared restraint rule. Small models will call a tool for a greeting unless told plainly
     /// not to, so both engines put this in front of the tool list.
-    static let usageRule = "Answer directly whenever you can. Call a tool only when the answer genuinely needs it, never for greetings, small talk, opinions, or anything you already know. Call at most one tool per reply, use what it returns, and never invent a result."
+    static let usageRule = "Most messages need no tool. Answer from your own knowledge unless the request plainly asks for something you cannot know or work out yourself. A greeting is never a reason to call a tool. Phrases such as \"in one word\", \"briefly\" or \"in short\" describe how to answer; they are not requests to count, measure, or look anything up. Never call a tool to decorate an answer with facts the user did not ask for. When a tool is genuinely needed, call one, use exactly what it returns, and never invent a result."
 
     static func instructions(for tools: [ToolSpec]) -> String {
         guard !tools.isEmpty else { return "" }

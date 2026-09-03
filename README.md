@@ -4,7 +4,8 @@ A local-first chat client for Apple's on-device foundation model and imported op
 
 - **macOS 26.5+ and iOS 26.5+**, SwiftUI + SwiftData, Swift 6 toolchain (Xcode 26.6).
 - **Two inference engines**: Apple Intelligence through the `FoundationModels` framework, and any GGUF file through llama.cpp (Metal on device, CPU in the Simulator).
-- **Tools the model can call**: five built-ins that run on device (date and time, calculator, unit converter, text statistics, chat search) plus your own Google-search and HTTPS-request tools, each with its own approval rule. A macOS shell-command tool exists for builds distributed outside the App Store.
+- **Tools the model can call**: twenty-five built-ins that run entirely on device — dates and time zones, arithmetic and units, percentages and number bases, text rewriting, find-and-replace, extraction, sorting, word counts and diffs, JSON and CSV, descriptive statistics, encoding, hashing, random numbers and a chat search — plus your own Google-search and HTTPS-request tools, each with its own approval rule. Four are on out of the box; the rest are one switch away in Tools, because Apple's on-device model has a 4,096-token window and every offered tool spends some of it. A macOS shell-command tool exists for builds distributed outside the App Store.
+- **A menu bar item on macOS**: type a question in the status bar and it opens in a chat, plus your last five chats and every window one click away. Sotto keeps running when you close its window so the icon still works; one switch in Settings › General removes it and restores quit-on-close.
 - **No accounts, no server, no analytics.** The only network calls are catalog downloads, the optional weekly catalog check, and any HTTPS tool you create yourself. Bytes sent are counted and shown on the Privacy page.
 - **Free.** No in-app purchases, no subscription, no ads, no paid tier.
 
@@ -42,11 +43,18 @@ xcodebuild -project Sotto.xcodeproj -scheme Sotto -destination 'platform=iOS Sim
 
 Double-clicking a `.gguf` file (macOS) or "Open in Sotto" from Files (iOS) imports the model.
 
+On macOS, Sotto also sits in the menu bar. Clicking the icon opens a small panel: a field that takes a
+question and hands it to a new chat in the main window, the five most recent chats, and shortcuts to
+the library, compare, tools, presets and settings windows. Because the icon has to have an app behind
+it, closing the last window leaves Sotto running rather than quitting — the panel's **Quit Sotto**, ⌘Q
+and the Dock's Quit all still work, and turning **Show in menu bar** off in Settings › General puts the
+old quit-on-close behaviour back.
+
 Sotto also registers the `sotto://` URL scheme for Shortcuts and the command line: `sotto://new`, `sotto://library`, `sotto://compare`, `sotto://personas`, `sotto://tools`, `sotto://settings`.
 
 ## Tools
 
-Open **Tools** (⇧⌘T) to see what a model may call. Five built-ins ship enabled and run entirely on device. You can add two more kinds:
+Open **Tools** (⇧⌘T) to see what a model may call. Twenty-five built-ins run entirely on device. Four ship enabled — date and time, calculator, unit converter and chat search — and the rest ship switched off, because every offered tool costs room in the model's context window (see below). You can add two more kinds:
 
 | Kind | What it does | Notes |
 |---|---|---|
@@ -66,6 +74,17 @@ the database by an earlier build.
 To ship it in a Developer ID build distributed outside the store, add `SOTTO_SHELL_TOOL` to
 `SWIFT_ACTIVE_COMPILATION_CONDITIONS` in that build's Release configuration. Never add it to a
 build destined for App Store Connect.
+
+### Why most built-ins ship switched off
+
+Every tool you enable is described to the model, with its parameters, before the conversation
+starts. Apple's on-device model has a fixed 4,096-token window, and past roughly twenty offered
+tools it stops answering at all rather than answering worse. Sotto keeps the offered list inside a
+quarter of that window and skips anything that does not fit, so switching on a handful of tools you
+actually use works better than switching on everything.
+
+Text statistics ships off for a second reason: the system model reached for it on prompts like
+"say hello in one word", where a word count is noise rather than help.
 
 ### Turning on Google search
 

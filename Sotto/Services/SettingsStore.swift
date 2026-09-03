@@ -30,6 +30,7 @@ final class SettingsStore {
         case bytesSentThisMonth
         case bytesSentTotal
         case inspectorVisible
+        case showMenuBarExtra
     }
 
     enum FlashAttentionMode: String, CaseIterable, Identifiable {
@@ -88,6 +89,7 @@ final class SettingsStore {
         bytesSentThisMonth = defaults.object(forKey: Key.bytesSentThisMonth.rawValue) as? Int64 ?? 0
         bytesSentTotal = defaults.object(forKey: Key.bytesSentTotal.rawValue) as? Int64 ?? 0
         inspectorVisible = Self.bool(defaults, .inspectorVisible, default: true)
+        showMenuBarExtra = Self.bool(defaults, .showMenuBarExtra, default: true)
         rolloverMonthIfNeeded()
     }
 
@@ -115,6 +117,9 @@ final class SettingsStore {
     var bytesSentThisMonth: Int64 { didSet { defaults.set(bytesSentThisMonth, forKey: Key.bytesSentThisMonth.rawValue) } }
     var bytesSentTotal: Int64 { didSet { defaults.set(bytesSentTotal, forKey: Key.bytesSentTotal.rawValue) } }
     var inspectorVisible: Bool { didSet { defaults.set(inspectorVisible, forKey: Key.inspectorVisible.rawValue) } }
+    /// macOS only: shows the status item, and keeps Sotto running when its window closes
+    /// so that item still has an app behind it.
+    var showMenuBarExtra: Bool { didSet { defaults.set(showMenuBarExtra, forKey: Key.showMenuBarExtra.rawValue) } }
 
     var defaultModelRef: ModelRef {
         get { ModelRef(rawValue: defaultModelRefRaw) ?? .apple }
@@ -181,5 +186,6 @@ final class SettingsStore {
         showTokenCounter = fresh.showTokenCounter
         verboseLogging = fresh.verboseLogging
         inspectorVisible = fresh.inspectorVisible
+        showMenuBarExtra = fresh.showMenuBarExtra
     }
 }

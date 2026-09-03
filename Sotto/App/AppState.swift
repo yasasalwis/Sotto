@@ -30,6 +30,8 @@ final class AppState {
     var newChatRequests = 0
     /// Persona slot requested by ⌥⌘1…9.
     var requestedPersonaSlot: Int?
+    /// A prompt typed into the menu bar, waiting for a chat session to send it.
+    var quickPrompt: String?
     /// Prompt to prefill when the compare window opens.
     var comparePrompt: String?
     var compareModelRefs: [ModelRef] = []

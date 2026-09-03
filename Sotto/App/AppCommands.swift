@@ -6,10 +6,8 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Chat") {
-                services.state.newChatRequests += 1
-            }
-            .keyboardShortcut("n", modifiers: .command)
+            Button("New Chat") { newChat() }
+                .keyboardShortcut("n", modifiers: .command)
         }
         CommandMenu("Models") {
             Button("Model Library…") { openLibrary() }
@@ -45,6 +43,17 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .option])
         }
+    }
+
+    /// On macOS the window may be closed while Sotto stays resident in the menu bar, so the
+    /// chat is created here rather than signalled to a view that might not exist yet.
+    private func newChat() {
+        #if os(macOS)
+        services.startConversation()
+        MainWindow.show(openWindow)
+        #else
+        services.state.newChatRequests += 1
+        #endif
     }
 
     private func openLibrary() {

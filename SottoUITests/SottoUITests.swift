@@ -46,6 +46,66 @@ final class SottoUITests: XCTestCase {
         XCTAssertTrue(answered || failed, "After sending, the chat must show an answer or an explanatory error")
     }
 
+    /// Exporting is the only place Sotto writes outside its own container, so it is the only
+    /// place the App Sandbox's user-selected-files entitlement is exercised. A read-only
+    /// entitlement lets the save panel pick a destination and then denies the write, which no
+    /// unit test can see: the failure lives in the sandbox, not in the code.
+    ///
+    /// macOS only — `fileExporter` on iOS goes through the document picker, which copies the
+    /// file on the app's behalf and needs no entitlement.
+    #if os(macOS)
+    @MainActor
+    func testExportingConversationsWritesAFile() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("SottoUITests", isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("export.json")
+
+        app.launch()
+        let start = app.descendants(matching: .any).matching(identifier: "onboarding.start").firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 10))
+        start.tap()
+
+        // Export stays disabled until there is a conversation to export.
+        app.typeKey("n", modifierFlags: .command)
+        app.typeKey(",", modifierFlags: .command)
+        let privacy = app.descendants(matching: .any).matching(identifier: "settings.pane.privacy").firstMatch
+        XCTAssertTrue(privacy.waitForExistence(timeout: 10), "Settings should open on ⌘,")
+        privacy.tap()
+        let export = app.descendants(matching: .any).matching(identifier: "privacy.export").firstMatch
+        XCTAssertTrue(export.waitForExistence(timeout: 5))
+        XCTAssertTrue(export.isEnabled, "A conversation exists, so export should be offered")
+        export.tap()
+
+        // The save panel belongs to Powerbox, not to Sotto, when the app is sandboxed.
+        let panel = XCUIApplication(bundleIdentifier: "com.apple.appkit.xpc.openAndSavePanelService")
+        let saveButton = panel.buttons["OKButton"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 20), "The save panel should appear")
+        panel.typeKey("g", modifierFlags: [.command, .shift])
+        panel.typeText(file.path)
+        panel.typeKey(.return, modifierFlags: [])
+        saveButton.click()
+
+        let written = expectation(description: "the export file appears")
+        let deadline = Date().addingTimeInterval(20)
+        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+            if FileManager.default.fileExists(atPath: file.path) || Date() > deadline {
+                timer.invalidate()
+                written.fulfill()
+            }
+        }
+        wait(for: [written], timeout: 25)
+
+        XCTAssertFalse(
+            app.staticTexts["Export failed"].exists,
+            "The sandbox refused the write the save panel had already granted"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "Export should write the file the user chose")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+        XCTAssertNotNil(json?["conversations"], "The export should hold the conversations")
+    }
+    #endif
+
     @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {

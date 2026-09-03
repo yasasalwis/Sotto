@@ -53,6 +53,40 @@ final class AppServices {
         Log.app.info("Sotto started; persistence=\(settings.storeConversations ? "disk" : "memory", privacy: .public)")
     }
 
+    /// Creates a chat with the default model and persona and selects it. Lives here rather
+    /// than in a view because ⌘N and the menu bar both need it, and the menu bar may fire it
+    /// while no window exists.
+    @MainActor
+    @discardableResult
+    func startConversation() -> Conversation {
+        let context = container.mainContext
+        let installed = (try? context.fetch(FetchDescriptor<InstalledModel>())) ?? []
+        let ref = ModelRegistry.preferredDefault(installed: installed, settings: settings)
+        let conversation = Conversation(modelRef: ref, personaID: settings.defaultPersonaID)
+        context.insert(conversation)
+        try? context.save()
+        state.selectedConversationID = conversation.id
+        Log.chat.info("Created conversation")
+        return conversation
+    }
+
+    /// Prepares a chat for a prompt typed into the menu bar and stores the prompt for
+    /// `MainView` to send once its session exists. The chat is created here so the prompt
+    /// survives the window being closed; an empty chat that is already open is reused rather
+    /// than leaving a stray one behind.
+    @MainActor
+    func startQuickPrompt(_ prompt: String) {
+        let context = container.mainContext
+        let current = state.selectedConversationID.flatMap { id in
+            try? context.fetch(FetchDescriptor<Conversation>(predicate: #Predicate { $0.id == id })).first
+        }
+        if MenuBarModel.needsNewConversation(current: current) {
+            startConversation()
+        }
+        state.quickPrompt = prompt
+        Log.chat.info("Queued a prompt from the menu bar")
+    }
+
     /// Drops records whose files vanished and orphaned files nothing references.
     func reconcileLibrary() {
         let context = container.mainContext

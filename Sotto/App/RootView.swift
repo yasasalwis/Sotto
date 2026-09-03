@@ -12,7 +12,6 @@ struct RootView: View {
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif
-    @Query(sort: \InstalledModel.importedAt, order: .reverse) private var installed: [InstalledModel]
     @Query(sort: \Persona.sortOrder) private var personas: [Persona]
 
     var body: some View {
@@ -31,6 +30,9 @@ struct RootView: View {
             }
         }
         .background(Theme.Colors.surface)
+        #if os(macOS)
+        .background { MainWindowTracker().frame(width: 0, height: 0) }
+        #endif
         .alert(item: $state.alert) { alert in
             Alert(title: Text(alert.title), message: Text(alert.message), dismissButton: .default(Text("OK")))
         }
@@ -61,12 +63,7 @@ struct RootView: View {
 
     /// Creates a new chat with the default model and persona and selects it.
     func createConversation() {
-        let ref = ModelRegistry.preferredDefault(installed: installed, settings: services.settings)
-        let conversation = Conversation(modelRef: ref, personaID: services.settings.defaultPersonaID)
-        context.insert(conversation)
-        try? context.save()
-        services.state.selectedConversationID = conversation.id
-        Log.chat.info("Created conversation")
+        services.startConversation()
     }
 
     private func applyPersona(slot: Int) {

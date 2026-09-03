@@ -224,6 +224,11 @@ struct GeneralPane: View {
                 SettingsRow(title: "Show token counter", detail: "The used / context figure under the composer.") {
                     Toggle("", isOn: $settings.showTokenCounter).toggleStyle(SottoToggleStyle()).labelsHidden()
                 }
+                #if os(macOS)
+                SettingsRow(title: "Show in menu bar", detail: "Ask a quick question, reopen a recent chat and jump to any window from the status bar. Sotto keeps running when you close its window so the icon still works; turn this off and closing the window quits.") {
+                    Toggle("", isOn: $settings.showMenuBarExtra).toggleStyle(SottoToggleStyle()).labelsHidden()
+                }
+                #endif
                 SettingsRow(title: "Let models call tools", detail: "Tools run on this device unless you add one that makes an HTTPS request. Each tool can ask before it runs.", last: true) {
                     HStack(spacing: 10) {
                         Button("Manage…") { openTools() }.buttonStyle(SecondaryButtonStyle())
@@ -370,6 +375,7 @@ struct PrivacyPane: View {
                 Button("Export all conversations") { prepareExport() }
                     .buttonStyle(SecondaryButtonStyle(size: 13, horizontalPadding: 15, verticalPadding: 9))
                     .disabled(conversations.isEmpty)
+                    .accessibilityIdentifier("privacy.export")
                 Button("Erase all data…") { confirmErase = true }
                     .buttonStyle(SecondaryButtonStyle(size: 13, horizontalPadding: 15, verticalPadding: 9, foreground: Theme.Colors.danger, border: Theme.Colors.dangerBorder))
                     .accessibilityIdentifier("privacy.erase")

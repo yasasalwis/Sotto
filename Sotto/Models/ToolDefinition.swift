@@ -125,12 +125,43 @@ struct ToolParameter: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Every tool that runs inside Sotto. The raw value is the function name the model calls, so it
+/// is part of the app's contract with a conversation and must not change once shipped.
 enum BuiltInToolID: String, Codable, CaseIterable, Identifiable, Sendable {
+    // Original five.
     case currentDateTime = "current_datetime"
     case calculator = "calculate"
     case unitConverter = "convert_units"
     case textStatistics = "text_statistics"
     case searchConversations = "search_conversations"
+
+    // Calendar.
+    case dateDifference = "date_difference"
+    case dateShift = "date_shift"
+    case timeInZone = "time_in_zone"
+    case calendarFacts = "calendar_facts"
+
+    // Text.
+    case transformText = "transform_text"
+    case replaceText = "replace_text"
+    case extractMatches = "extract_matches"
+    case sortLines = "sort_lines"
+    case wordFrequency = "word_frequency"
+    case compareTexts = "compare_texts"
+
+    // Data.
+    case formatJSON = "format_json"
+    case queryJSON = "query_json"
+    case summarizeCSV = "summarize_csv"
+    case describeNumbers = "describe_numbers"
+    case percentage = "percentage"
+    case convertBase = "convert_base"
+
+    // Encoding and estimation.
+    case encodeText = "encode_text"
+    case hashText = "hash_text"
+    case randomNumber = "random_number"
+    case estimateTokens = "estimate_tokens"
 
     var id: String { rawValue }
 }
@@ -312,13 +343,22 @@ final class ToolDefinition {
     }
 
     /// Built-in tools seeded on first launch, plus the Google search tool, which stays off until
-    /// the user supplies credentials.
+    /// the user supplies credentials. Grouped so no one list grows past reading length; the order
+    /// of the groups is the order they appear in the Tools list.
     static func builtInSeeds() -> [ToolDefinition] {
-        let seeds: [ToolDefinition] = [
+        let seeds = coreSeeds() + calendarSeeds() + textSeeds() + dataSeeds() + encodingSeeds()
+        for seed in seeds {
+            seed.seededSummary = seed.summary
+        }
+        return seeds
+    }
+
+    private static func coreSeeds() -> [ToolDefinition] {
+        [
             ToolDefinition(
                 name: BuiltInToolID.currentDateTime.rawValue,
                 displayName: "Date & time",
-                summary: "Returns the current date, time and time zone on this device. Call it only when the answer depends on what the date or time is right now, such as “what day is it” or “how long until Friday”. Do not call it otherwise.",
+                summary: "Returns the current date, time and time zone on this device. Use it when the user asks what the date or time is now, or when your answer cannot be correct without knowing today’s date, such as “how long until Friday”. Do not call it for a greeting, for a date the user already told you, or to add the date to an answer that did not ask for it.",
                 kind: .builtIn,
                 approval: .automatic,
                 isBuiltIn: true,
@@ -328,7 +368,7 @@ final class ToolDefinition {
             ToolDefinition(
                 name: BuiltInToolID.calculator.rawValue,
                 displayName: "Calculator",
-                summary: "Works out an arithmetic expression exactly, for example 17*23 or (4.5+2)/3. Call it only when the user asks for a calculation, or your answer depends on one. Do not call it for numbers you are simply repeating.",
+                summary: "Works out one arithmetic expression exactly, for example 17*23 or (4.5+2)/3. Use it when the user asks for a calculation, or your answer depends on one you have not been given. Do not call it to repeat a number the user supplied, to count words, letters or items, or for a sum you are only describing rather than performing.",
                 kind: .builtIn,
                 parameters: [ToolParameter(name: "expression", type: .string, summary: "Arithmetic using + - * / % ^ ( ) and decimal numbers")],
                 approval: .automatic,
@@ -339,7 +379,7 @@ final class ToolDefinition {
             ToolDefinition(
                 name: BuiltInToolID.unitConverter.rawValue,
                 displayName: "Unit converter",
-                summary: "Converts a number from one unit to another, for example 5 km to miles. Call it only when the user asks for a conversion and names both units. Never invent a conversion the user did not ask for.",
+                summary: "Converts a number from one unit of measure to another, for example 5 km to miles. Use it when the user gives a value and names both units. Do not call it when only one unit is named, when a measurement is mentioned in passing, or to convert something the user did not ask about.",
                 kind: .builtIn,
                 parameters: [
                     ToolParameter(name: "value", type: .number, summary: "The number to convert"),
@@ -354,10 +394,11 @@ final class ToolDefinition {
             ToolDefinition(
                 name: BuiltInToolID.textStatistics.rawValue,
                 displayName: "Text statistics",
-                summary: "Counts characters, words and sentences in text the user gave you, and estimates reading time. Call it only when the user asks how long a piece of text is. Do not call it on your own replies.",
+                summary: "Counts the characters, words, sentences and reading time of a passage the user supplied. Use it only when the user asks how long their own text is, for example “how many words is this paragraph”. Never call it because of how the user asked you to answer: “in one word”, “briefly”, “in short” and “keep it under 20 words” describe your reply, they are not text to measure. Never measure your own answer, and never measure a word the user simply asked you to say.",
                 kind: .builtIn,
                 parameters: [ToolParameter(name: "text", type: .string, summary: "The text to measure")],
                 approval: .automatic,
+                isEnabled: false,
                 isBuiltIn: true,
                 builtIn: .textStatistics,
                 sortOrder: 3
@@ -366,7 +407,7 @@ final class ToolDefinition {
                 let search = ToolDefinition(
                     name: "google_search",
                     displayName: "Google search",
-                    summary: "Searches the web with Google and returns the top results as titles, snippets and links. Call it only when the answer depends on current information, or the user asks you to look something up. Do not call it for greetings, opinions, or things you already know.",
+                    summary: "Searches the web with Google and returns the top results as titles, snippets and links. Use it when the answer depends on information that changes, or the user asks you to look something up. Do not call it for greetings, opinions, arithmetic, or anything you already know.",
                     kind: .webSearch,
                     parameters: [
                         ToolParameter(name: "query", type: .string, summary: "What to search for, in a few words"),
@@ -382,7 +423,7 @@ final class ToolDefinition {
             ToolDefinition(
                 name: BuiltInToolID.searchConversations.rawValue,
                 displayName: "Search my chats",
-                summary: "Searches the user's earlier Sotto conversations for a phrase and returns matching snippets. Call it only when the user refers to something said in an earlier chat. Everything stays on this device.",
+                summary: "Searches the user’s earlier Sotto conversations for a phrase and returns matching snippets. Use it when the user refers to something from a previous chat, such as “what did I call that project last week”. Do not call it for the conversation in front of you, which you can already read, or for general knowledge. Everything stays on this device.",
                 kind: .builtIn,
                 parameters: [ToolParameter(name: "query", type: .string, summary: "Words to look for")],
                 approval: .askEveryTime,
@@ -391,9 +432,183 @@ final class ToolDefinition {
                 sortOrder: 4
             ),
         ]
-        for seed in seeds {
-            seed.seededSummary = seed.summary
-        }
-        return seeds
+    }
+
+    private static func calendarSeeds() -> [ToolDefinition] {
+        [
+            builtIn(.dateDifference, "Date difference", order: 6,
+                summary: "Measures the gap between two dates in days, weeks, months and years. Use it when the user asks how long there is between two dates, or how far off one is. Do not call it for a duration the user already stated, or for a vague stretch of time such as “a while ago”.",
+                parameters: [
+                    ToolParameter(name: "from", type: .string, summary: "Start date as YYYY-MM-DD, or today, tomorrow, yesterday"),
+                    ToolParameter(name: "to", type: .string, summary: "End date; the current moment when left out", isRequired: false),
+                ]),
+            builtIn(.dateShift, "Date shift", order: 7,
+                summary: "Gives the date a number of days, weeks, months, years, hours or minutes before or after another date. Use it when the user asks what date something lands on, such as “90 days from today”. Do not call it when the user has already named the date, or to stamp an answer with a date nobody asked for.",
+                parameters: [
+                    ToolParameter(name: "amount", type: .number, summary: "How far to move; negative goes backwards"),
+                    ToolParameter(name: "unit", type: .string, summary: "days, weeks, months, years, hours or minutes"),
+                    ToolParameter(name: "date", type: .string, summary: "Starting date; today when left out", isRequired: false),
+                ]),
+            builtIn(.timeInZone, "Time elsewhere", order: 8,
+                summary: "Reports the current date and time in another time zone and how far ahead or behind this device it is. Use it when the user asks what time it is somewhere else. Do not call it for the local time, for a place mentioned only in passing, or to restate a time the user already gave you.",
+                parameters: [
+                    ToolParameter(name: "zone", type: .string, summary: "A city or identifier such as Tokyo or Asia/Tokyo"),
+                ]),
+            builtIn(.calendarFacts, "Calendar facts", order: 9,
+                summary: "Reports the weekday, month length, quarter, day of the year, ISO week number and leap year of one date. Use it when the user asks one of those about a particular date. Do not call it to decorate an answer with calendar trivia, or when a date is mentioned only in passing.",
+                parameters: [
+                    ToolParameter(name: "date", type: .string, summary: "The date to describe; today when left out", isRequired: false),
+                ]),
+        ]
+    }
+
+    private static func textSeeds() -> [ToolDefinition] {
+        [
+            builtIn(.transformText, "Transform text", order: 10,
+                summary: "Rewrites text in one chosen style: upper, lower, title, sentence, snake, kebab, camel, pascal, slug, trim, reverse or strip_accents. Use it when the user asks for one of those exact changes. Do not call it for rewording, translating, summarising or correcting text — do that yourself.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to rewrite"),
+                    ToolParameter(name: "style", type: .string, summary: "One of the styles listed in the description"),
+                ]),
+            builtIn(.replaceText, "Find and replace", order: 11,
+                summary: "Replaces every occurrence of one exact phrase with another and says how many changed. Use it when the user asks for a find and replace over text they supplied. Do not call it for a rewrite, an edit for tone, or a one-word change you can simply make yourself.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to change"),
+                    ToolParameter(name: "find", type: .string, summary: "The exact phrase to look for"),
+                    ToolParameter(name: "replace", type: .string, summary: "What to put in its place; empty deletes it", isRequired: false),
+                    ToolParameter(name: "match_case", type: .boolean, summary: "Match capitalisation exactly; true when left out", isRequired: false),
+                ]),
+            builtIn(.extractMatches, "Extract from text", order: 12,
+                summary: "Pulls every email, url, number, hashtag, mention, ip_address, date or phone number out of a passage. Use it when the user asks you to collect one of those from text they supplied. Do not call it to find a single obvious value, and do not call it for topics, names or ideas: it matches patterns, not meaning.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to search"),
+                    ToolParameter(name: "kind", type: .string, summary: "email, url, number, hashtag, mention, ip_address, date or phone"),
+                    ToolParameter(name: "limit", type: .number, summary: "How many to list, 1 to 100; 25 when left out", isRequired: false),
+                ]),
+            builtIn(.sortLines, "Sort lines", order: 13,
+                summary: "Sorts the lines of a list ascending, descending, longest, shortest or reversed, and can drop repeats. Use it when the user asks for a list they supplied to be sorted or deduplicated. Do not call it to rank things by judgement or importance, or to tidy a list you wrote yourself.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The lines to sort, one per line"),
+                    ToolParameter(name: "order", type: .string, summary: "ascending, descending, longest, shortest or reverse", isRequired: false),
+                    ToolParameter(name: "unique", type: .boolean, summary: "Remove repeated lines", isRequired: false),
+                ]),
+            builtIn(.wordFrequency, "Word frequency", order: 14,
+                summary: "Counts which words appear most often in a piece of text. Use it when the user asks which words recur, or asks for a frequency count. Do not call it to summarise a text or find its themes, and never because the user asked for a short answer.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to count"),
+                    ToolParameter(name: "limit", type: .number, summary: "How many words to list, 1 to 50; 10 when left out", isRequired: false),
+                    ToolParameter(name: "ignore_common", type: .boolean, summary: "Skip words like the and of; true when left out", isRequired: false),
+                ]),
+            builtIn(.compareTexts, "Compare texts", order: 15,
+                summary: "Compares two texts line by line and lists the lines that differ. Use it when the user gives you two versions of something and asks what changed. Do not call it to weigh up two ideas, opinions or arguments — it compares literal text only.",
+                parameters: [
+                    ToolParameter(name: "first", type: .string, summary: "The original text"),
+                    ToolParameter(name: "second", type: .string, summary: "The text to compare against it"),
+                ]),
+        ]
+    }
+
+    private static func dataSeeds() -> [ToolDefinition] {
+        [
+            builtIn(.formatJSON, "Format JSON", order: 16,
+                summary: "Checks that JSON is valid and rewrites it pretty-printed or minified, naming the fault when it is not. Use it when the user asks you to format, tidy or check JSON. Do not call it to explain what the JSON means, and do not call it on text that is not JSON.",
+                parameters: [
+                    ToolParameter(name: "json", type: .string, summary: "The JSON text"),
+                    ToolParameter(name: "style", type: .string, summary: "pretty or minified; pretty when left out", isRequired: false),
+                ]),
+            builtIn(.queryJSON, "Read from JSON", order: 17,
+                summary: "Reads one value out of a JSON document by dot path, such as user.address.city or items.0.name. Use it when the user asks what a JSON document holds at a place. Do not call it for a value already plain to see in a short document, or to reshape or rewrite the JSON.",
+                parameters: [
+                    ToolParameter(name: "json", type: .string, summary: "The JSON text"),
+                    ToolParameter(name: "path", type: .string, summary: "Dot path to the value; empty returns the whole document"),
+                ]),
+            builtIn(.summarizeCSV, "Summarise CSV", order: 18,
+                summary: "Reports the rows, columns and per-column figures of CSV text. Use it when the user supplies CSV and asks what is in it. Do not call it on prose, on a handful of rows you can read directly, or to interpret what the data means.",
+                parameters: [
+                    ToolParameter(name: "csv", type: .string, summary: "The CSV text"),
+                    ToolParameter(name: "delimiter", type: .string, summary: "Single character between fields; a comma when left out", isRequired: false),
+                    ToolParameter(name: "has_header", type: .boolean, summary: "First row holds column names; true when left out", isRequired: false),
+                ]),
+            builtIn(.describeNumbers, "Describe numbers", order: 19,
+                summary: "Gives the count, sum, mean, median, minimum, maximum, range and standard deviation of a list of numbers. Use it when the user asks for figures over numbers they supplied. Do not call it for a single number, for one simple sum — the calculator handles that — or for numbers you would have to invent.",
+                parameters: [
+                    ToolParameter(name: "numbers", type: .string, summary: "The numbers, separated by commas or spaces"),
+                ]),
+            builtIn(.percentage, "Percentages", order: 20,
+                summary: "Works out percentages: percent_of, what_percent, change between two values, or increase and decrease by a percent. Use it when the user asks a percentage question. Do not call it to restate a percentage the user already gave, or to add one to an answer that did not ask for it.",
+                parameters: [
+                    ToolParameter(name: "mode", type: .string, summary: "percent_of, what_percent, change, increase or decrease"),
+                    ToolParameter(name: "value", type: .number, summary: "The first number"),
+                    ToolParameter(name: "other", type: .number, summary: "The second number, or the percentage for increase and decrease"),
+                ]),
+            builtIn(.convertBase, "Number bases", order: 21,
+                summary: "Converts a whole number between bases 2 to 36, such as decimal to binary or hexadecimal. Use it when the user asks for a base conversion. Do not call it for a unit conversion, and do not call it for a number already written in the base asked for.",
+                parameters: [
+                    ToolParameter(name: "value", type: .string, summary: "The number, written in from_base"),
+                    ToolParameter(name: "from_base", type: .number, summary: "Base it is written in, 2 to 36; 10 when left out", isRequired: false),
+                    ToolParameter(name: "to_base", type: .number, summary: "Base to convert to, 2 to 36; 2 when left out", isRequired: false),
+                ]),
+        ]
+    }
+
+    private static func encodingSeeds() -> [ToolDefinition] {
+        [
+            builtIn(.encodeText, "Encode or decode", order: 22,
+                summary: "Encodes or decodes text as base64, hex or url percent-encoding. Use it when the user names one of those three formats. Do not call it to encrypt, hash or hide anything: these encodings are reversible by anyone and are not security.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to convert"),
+                    ToolParameter(name: "format", type: .string, summary: "base64, hex or url"),
+                    ToolParameter(name: "direction", type: .string, summary: "encode or decode; encode when left out", isRequired: false),
+                ]),
+            builtIn(.hashText, "Hash text", order: 23,
+                summary: "Computes the SHA-256, SHA-384 or SHA-512 digest of text. Use it when the user asks for a hash or a checksum. Do not call it to encrypt anything, to store a password, or to encode text — encode_text does that.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to hash"),
+                    ToolParameter(name: "algorithm", type: .string, summary: "sha256, sha384 or sha512; sha256 when left out", isRequired: false),
+                ]),
+            builtIn(.randomNumber, "Random numbers", order: 24,
+                summary: "Returns up to twenty random whole numbers in a range, for dice, picks and draws. Use it when the user asks for something random or asks you to choose. Never call it to invent a figure, a statistic or an example number for an answer.",
+                parameters: [
+                    ToolParameter(name: "minimum", type: .number, summary: "Lowest possible number; 1 when left out", isRequired: false),
+                    ToolParameter(name: "maximum", type: .number, summary: "Highest possible number; 100 when left out", isRequired: false),
+                    ToolParameter(name: "count", type: .number, summary: "How many numbers, 1 to 20; 1 when left out", isRequired: false),
+                ]),
+            builtIn(.estimateTokens, "Estimate tokens", order: 25,
+                summary: "Estimates how many tokens a piece of text costs a model, alongside its characters and words. Use it when the user asks about token count or context budget. Do not call it to measure text for any other reason, and never because the user asked for a short answer.",
+                parameters: [
+                    ToolParameter(name: "text", type: .string, summary: "The text to measure"),
+                ]),
+        ]
+    }
+
+    /// Shorthand for the on-device built-ins added after the original five. They differ only in
+    /// their wording and parameters: every one runs locally, has no side effects, and so runs
+    /// without asking first.
+    ///
+    /// They ship switched **off**. Apple's system model reads every offered tool's schema into a
+    /// 4,096-token window before the conversation starts, and past roughly twenty tools the
+    /// session fails outright rather than answering worse — measured on iOS 26.5, where twenty
+    /// tools answered and twenty-four returned a bare `GenerationError`. Turning them all on by
+    /// default would have broken the app's own model on first launch, so the choice is the
+    /// user's, one switch at a time, the same way `google_search` works.
+    private static func builtIn(
+        _ id: BuiltInToolID,
+        _ displayName: String,
+        order: Int,
+        summary: String,
+        parameters: [ToolParameter]
+    ) -> ToolDefinition {
+        ToolDefinition(
+            name: id.rawValue,
+            displayName: displayName,
+            summary: summary,
+            kind: .builtIn,
+            parameters: parameters,
+            approval: .automatic,
+            isEnabled: false,
+            isBuiltIn: true,
+            builtIn: id,
+            sortOrder: order
+        )
     }
 }

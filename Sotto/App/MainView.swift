@@ -36,6 +36,10 @@ struct MainView: View {
         #endif
         .task(id: services.state.selectedConversationID) {
             refreshSession()
+            sendQuickPromptIfPending()
+        }
+        .onChange(of: services.state.quickPrompt) { _, _ in
+            sendQuickPromptIfPending()
         }
         .onChange(of: conversations.count) { _, _ in
             ensureSelection()
@@ -112,6 +116,19 @@ struct MainView: View {
             session?.stop()
             session = ChatSession(conversation: conversation, services: services, context: context)
         }
+    }
+
+    /// Sends a prompt typed into the menu bar. `AppServices.startQuickPrompt` has already
+    /// created and selected the chat; this runs once its session exists, which may be as late
+    /// as the window being re-opened.
+    private func sendQuickPromptIfPending() {
+        guard let prompt = services.state.quickPrompt,
+              let session,
+              session.conversation.isEmpty,
+              !session.isGenerating else { return }
+        services.state.quickPrompt = nil
+        session.draft = prompt
+        session.send()
     }
 
     private func ensureSelection() {

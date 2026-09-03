@@ -6,6 +6,8 @@ struct SottoApp: App {
     @State private var services: AppServices
     #if os(iOS)
     @UIApplicationDelegateAdaptor(SottoAppDelegate.self) private var appDelegate
+    #else
+    @NSApplicationDelegateAdaptor(SottoMacAppDelegate.self) private var appDelegate
     #endif
 
     init() {
@@ -14,11 +16,24 @@ struct SottoApp: App {
         _services = State(initialValue: services)
         #if os(iOS)
         SottoAppDelegate.services = services
+        #else
+        SottoMacAppDelegate.services = services
         #endif
     }
 
+    #if os(macOS)
+    /// Drives `MenuBarExtra`'s presence from the preference, so turning the status item off
+    /// removes it without a relaunch.
+    private var menuBarInserted: Binding<Bool> {
+        Binding(
+            get: { services.settings.showMenuBarExtra },
+            set: { services.settings.showMenuBarExtra = $0 }
+        )
+    }
+    #endif
+
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: WindowID.main) {
             RootView()
                 .environment(services)
                 .modelContainer(services.container)
@@ -77,6 +92,17 @@ struct SottoApp: App {
         }
         .defaultSize(width: 1180, height: 760)
 
+        MenuBarExtra(isInserted: menuBarInserted) {
+            MenuBarView()
+                .environment(services)
+                .modelContainer(services.container)
+                .preferredColorScheme(.light)
+        } label: {
+            Image(systemName: "s.square")
+                .accessibilityLabel("Sotto")
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
             SettingsView()
                 .environment(services)
@@ -89,6 +115,7 @@ struct SottoApp: App {
 }
 
 enum WindowID {
+    static let main = "main"
     static let library = "library"
     static let compare = "compare"
     static let personas = "personas"

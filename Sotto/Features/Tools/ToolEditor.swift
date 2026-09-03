@@ -382,11 +382,22 @@ struct ToolEditor: View {
                     .lineLimit(1...6)
                     .padding(16)
                     .card(radius: Theme.Radius.card, border: Theme.Colors.borderMedium)
+                    .disabled(!ToolKind.shellCommand.isAvailableOnThisPlatform)
                     .accessibilityIdentifier("tool.command")
-                Text("Runs with /bin/zsh as you, from your home folder, with a \(Int(ToolExecutor.timeout)) second limit. Arguments are quoted before they are inserted, so they cannot add commands of their own.")
-                    .font(Theme.Fonts.sans(12))
-                    .foregroundStyle(Theme.Colors.faint)
-                    .fixedSize(horizontal: false, vertical: true)
+                // A shell tool can survive in the database after an update to a build that has
+                // no shell tool, so the editor says what will actually happen rather than
+                // describing a run that cannot occur.
+                if ToolKind.shellCommand.isAvailableOnThisPlatform {
+                    Text("Runs with /bin/zsh as you, from your home folder, with a \(Int(ToolExecutor.timeout)) second limit. Arguments are quoted before they are inserted, so they cannot add commands of their own.")
+                        .font(Theme.Fonts.sans(12))
+                        .foregroundStyle(Theme.Colors.faint)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("This build of Sotto cannot run shell tools, so this one will not run. You can delete it.")
+                        .font(Theme.Fonts.sans(12))
+                        .foregroundStyle(Theme.Colors.faint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         case .webSearch:
             VStack(alignment: .leading, spacing: 9) {

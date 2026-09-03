@@ -7,6 +7,36 @@ final class AppleIntelligenceEngine: InferenceEngine {
     /// Apple's system model has a fixed 4,096-token window.
     static let fixedContextLength = 4096
 
+    /// How much of that window the tool schemas may take.
+    ///
+    /// The framework writes every offered tool's description and parameter schema into the window
+    /// before the conversation. Past a point the session does not answer worse — it fails, with a
+    /// bare `GenerationError` that says nothing a user could act on.
+    ///
+    /// Measured on iOS 26.5 against the built-in library. Twenty tools answered and called the
+    /// right one; twenty-four failed before running anything. At two fifths of the window the
+    /// session got as far as four tool calls and then failed, because the schemas and the calls
+    /// and their results all share the same 4,096 tokens — a turn may make up to
+    /// `ToolDefinition.maximumCallsPerTurn` calls, and each result may be several hundred tokens.
+    /// A quarter of the window leaves room for that whole exchange, and a smaller menu also makes
+    /// a 3B model pick better.
+    static let toolDefinitionTokenBudget = fixedContextLength / 4
+
+    /// The tools that fit the budget, in the order the user put them in. A tool too large for the
+    /// remaining room is skipped rather than ending the list, so a small tool further down still
+    /// gets offered. Nothing is silently lost: the caller logs what was left out.
+    static func toolsFittingBudget(_ specs: [ToolSpec], budget: Int = toolDefinitionTokenBudget) -> [ToolSpec] {
+        var kept: [ToolSpec] = []
+        var used = 0
+        for spec in specs {
+            let cost = TokenEstimator.estimate("\(spec.name): \(spec.description)\n\(spec.parametersSchemaJSON)")
+            guard used + cost <= budget else { continue }
+            used += cost
+            kept.append(spec)
+        }
+        return kept
+    }
+
     let displayName = "Apple Intelligence"
     var contextLength: Int { Self.fixedContextLength }
     let countsTokensExactly = false
@@ -64,8 +94,13 @@ final class AppleIntelligenceEngine: InferenceEngine {
                         toolRule: request.tools.isEmpty ? nil : ToolPromptFormatter.usageRule
                     )
                     // The system model calls tools itself; the runner reports each call to the UI.
+                    let offered = Self.toolsFittingBudget(request.tools)
+                    if offered.count < request.tools.count {
+                        let dropped = Set(request.tools.map(\.name)).subtracting(offered.map(\.name)).sorted()
+                        Log.engine.notice("Offering \(offered.count, privacy: .public) of \(request.tools.count, privacy: .public) tools to Apple Intelligence; no room in the \(Self.fixedContextLength, privacy: .public)-token window for: \(dropped.joined(separator: ", "), privacy: .public)")
+                    }
                     let tools: [any Tool] = toolRunner.map { runner in
-                        request.tools.compactMap { spec in
+                        offered.compactMap { spec in
                             do {
                                 return try AppleDynamicTool(spec: spec, runner: runner)
                             } catch {

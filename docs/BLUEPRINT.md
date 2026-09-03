@@ -44,7 +44,8 @@ Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validati
 6. **iOS "swipe to swap models"** in the compare mock is implemented as tapping either model name to swap.
 7. **Dark mode** is not in the design; the app pins a light appearance.
 8. **visionOS** was in the template's supported platforms but not in the design; it was removed because llama.cpp's binary has no visionOS slice.
-9. **CloudKit / push entitlements** from the Xcode template remain in `Sotto.entitlements` and `Info.plist` (`UIBackgroundModes: remote-notification`). No code uses them; they contradict the privacy stance and should be deleted before shipping — left untouched here because they are the owner's project configuration.
+9. **CloudKit / push entitlements** from the Xcode template are gone. `Sotto.entitlements` was never referenced by the target (`CODE_SIGN_ENTITLEMENTS` is unset; App Sandbox, read-only user-selected files and the network client are synthesised from build settings) and has been deleted, along with its unused `aps-environment` and its CloudKit service declared against an empty container array — the latter would have failed App Store validation had anyone wired the file up. No `UIBackgroundModes` is set.
+10. **App Store readiness** is tracked separately in [APP_REVIEW.md](../APP_REVIEW.md): the icon set, `PrivacyInfo.xcprivacy`, export-compliance and in-place document keys, the generated-text notice, and the removal of the shell tool from store builds under guideline 2.5.2.
 
 ## Data model
 
@@ -53,6 +54,24 @@ Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validati
 - `InstalledModel` (file name in the models dir, size, quant, params, architecture, context, measured tok/s, source, catalog id).
 - `ModelDownload` (catalog id, url, bytes, state, resume data, error).
 - Preferences in `UserDefaults` (see `SettingsStore.Key`); privacy-affecting keys default to off.
+
+## macOS menu bar
+
+`MenuBarExtra` (window style) hosts a field, the five most recent chats and the window shortcuts.
+It deliberately does **not** stream a reply: a prompt typed there is stored on `AppState.quickPrompt`
+by `AppServices.startQuickPrompt`, which also creates (or reuses) an empty chat, and `MainView` sends
+it once that chat's `ChatSession` exists. Keeping generation in one place means tool approval,
+attachments, retries and the transcript have a single implementation, and a prompt survives the
+window being closed.
+
+Two consequences worth naming:
+
+- **Residency.** `SottoMacAppDelegate.applicationShouldTerminateAfterLastWindowClosed` returns false
+  while `showMenuBarExtra` is on, so the icon always has an app behind it. With the preference off the
+  app quits on close as before. A closed window is re-created through `MainWindow.show`, which prefers
+  the `NSWindow` recorded by `MainWindowTracker` and falls back to `openWindow(id:)`.
+- **The lock.** The panel shows chat titles, so it renders a locked notice instead whenever
+  `AppLock.status != .unlocked`, and offers no prompt field until onboarding is done.
 
 ## Build phases (as delivered)
 
@@ -65,7 +84,17 @@ Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validati
 
 ## Tools (added after the first build)
 
-A model may call tools. Five built-ins run on device: date and time, calculator, unit converter, text statistics, and a search over the user's own conversations. Users can add HTTPS-request tools (URL template with `{argument}` placeholders, optional JSON dot-path into the answer) and, on macOS, shell-command tools.
+A model may call tools. Twenty-five built-ins run on device, in five groups:
+
+| Group | Tools |
+|---|---|
+| Original | `current_datetime`, `calculate`, `convert_units`, `text_statistics`, `search_conversations` |
+| Calendar | `date_difference`, `date_shift`, `time_in_zone`, `calendar_facts` |
+| Text | `transform_text`, `replace_text`, `extract_matches`, `sort_lines`, `word_frequency`, `compare_texts` |
+| Data | `format_json`, `query_json`, `summarize_csv`, `describe_numbers`, `percentage`, `convert_base` |
+| Encoding | `encode_text`, `hash_text`, `random_number`, `estimate_tokens` |
+
+Users can add HTTPS-request tools (URL template with `{argument}` placeholders, optional JSON dot-path into the answer) and, on macOS, shell-command tools.
 
 | Concern | Decision |
 |---|---|
@@ -74,9 +103,12 @@ A model may call tools. Five built-ins run on device: date and time, calculator,
 | Approval | Per tool: ask every time (a card in the chat showing the exact URL or command) or run automatically. "Always allow" flips the tool to automatic. Built-in read-only tools default to automatic; chat search asks. |
 | Injection | HTTPS argument values are percent-encoded with `&=+?#/` removed, so a model cannot add parameters. Shell arguments are single-quoted with embedded quotes escaped. |
 | Runaway loops | Four tool calls per reply, 20 second timeout each, results truncated at 4,000 characters. |
+| Which built-ins ship on | Four: date and time, calculator, unit converter and chat search. The twenty added later ship off to stay inside the context budget, and text statistics was switched off after the system model called it for "say hello in one word" — a word count is noise there. Seeding never flips a switch the user has set. |
 | Google search | A first-class tool kind rather than a generic HTTPS tool, because the useful output is a short list of titles, snippets and links rather than the raw JSON, and because the credentials deserve a real setup panel. It ships disabled and unusable until the user supplies a key and engine id. The key lives in the keychain keyed by the tool's id. |
 | Persona scope | A persona exposes all tools, a chosen few, or none. `localOnly`, previously decorative, now means the persona never sees a tool that uses the network. |
 | Calculator safety | `NSExpression` raises Objective-C exceptions Swift cannot catch, so arithmetic uses a hand-written recursive-descent parser supporting `+ - * / % ^`, unary minus and parentheses. |
+| No model-supplied patterns | `replace_text` matches literally and `extract_matches` offers eight fixed, audited patterns rather than accepting a regular expression. Built-ins run without the shell tool's timeout, so a pattern that backtracks catastrophically would hang the reply with nothing able to stop it. This is the same reasoning as the calculator row above. |
+| Tool count is bounded by the window | Every offered tool's description and schema is read into the model's context before the conversation, and Apple's system model has a fixed 4,096 tokens. Measured on iOS 26.5: twenty tools answered and called the right one; twenty-four failed outright with a bare `GenerationError` before running anything; and at two fifths of the window the session managed four tool calls before the accumulated results overflowed it. So the twenty tools added after the original five **ship switched off** — turning them all on by default would have broken the app's own model on first launch — and `AppleIntelligenceEngine` trims whatever is enabled to a quarter of the window, keeping the user's order, skipping what will not fit and logging what it left out. A smaller menu also makes a 3B model choose better: with fifteen tools offered it looped between two of them, with ten it made one correct call. |
 
 ## Known limitations / next phase
 
