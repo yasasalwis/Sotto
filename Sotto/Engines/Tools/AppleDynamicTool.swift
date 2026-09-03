@@ -71,6 +71,8 @@ nonisolated struct AppleDynamicTool: Tool {
             return properties.reduce(into: [String: Any]()) { result, entry in
                 if let value = plainValue(entry.value) { result[entry.key] = value }
             }
+        // `Kind` belongs to FoundationModels and may gain cases; without this the switch traps.
+        @unknown default: return nil
         }
     }
 

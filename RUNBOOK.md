@@ -41,6 +41,30 @@ Edit `Sotto/Resources/Catalog/models.json`. Every entry needs a working `https:/
 3. If a GGUF model never calls a tool, check that its reply is not being shown as raw JSON: that means the call block was not recognised. Capture the reply and add a case to `ToolCallScannerTests`.
 4. HTTPS tools that fail with a status code usually need a header; shell tools that time out are over the 20 second limit.
 
+## Diagnosing a catalog download
+
+1. In a Debug build, start one from the command line rather than the UI:
+
+   ```
+   open -n Sotto.app --args -startCatalogDownload qwen2.5-0.5b-instruct-q4_k_m
+   ```
+
+2. Watch the record move in the app's own database:
+
+   ```
+   sqlite3 ~/Library/Containers/lk.eonix.Sotto/Data/Library/Application\ Support/Sotto/Sotto.store \
+     "select ZNAME, ZSTATERAW, ZRECEIVEDBYTES, ZERRORMESSAGE from ZMODELDOWNLOAD;"
+   ```
+
+   The row disappears and one appears in `ZINSTALLEDMODEL` when the file has been validated and moved.
+
+3. A download stuck at zero bytes with no error is the system holding the request: the record's
+   message reads "Waiting for a network Sotto is allowed to use." On iOS that is the Wi-Fi-only
+   setting; on macOS that setting does not apply.
+
+4. Two copies of the app running at once share one background-session identifier and one database.
+   Quit the other copy before investigating.
+
 ## Rotating secrets
 
 The app has none of its own. A user may put an API key in the headers of an HTTPS tool; those live in the app's database with the rest of their data and are removed by Settings › Privacy › Erase all data.

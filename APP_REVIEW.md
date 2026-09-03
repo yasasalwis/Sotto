@@ -23,10 +23,12 @@ quietly undo one.
 | `LSSupportsOpeningDocumentsInPlace = true` (a multi-GB GGUF is not copied to Inbox first) | `Sotto/Info.plist` |
 | `NSFaceIDUsageDescription` | `Sotto/Info.plist` |
 | No unused push / CloudKit entitlements | the stray `Sotto.entitlements` was deleted; sandbox and network come from build settings |
+| Sandbox grants read **and write** on user-chosen files | `ENABLE_USER_SELECTED_FILES = readwrite` in the project. Settings › Privacy › Export writes to the file the save panel returns, and a read-only grant lets the panel choose a destination and then refuses the write |
 | Generated-text notice in onboarding, the empty chat and Settings › About | `AppLinks.generatedContentNotice` |
 | Privacy-policy, support and source links in Settings › About | `Sotto/Domain/AppLinks.swift` |
 | Shell tool compiled out of App Store builds (guideline 2.5.2) | `ToolKind.shellToolIsCompiledIn` |
 | Model download host pinned to `huggingface.co` at runtime | `ModelCatalog.validate()` |
+| Menu bar item is a normal `MenuBarExtra`, not a background-only app | `SottoApp`; `LSUIElement` is deliberately unset, so Sotto keeps its Dock icon and windows |
 
 > **`AppLinks` points at GitHub.** If you move the privacy and support pages to your own
 > domain, change `Sotto/Domain/AppLinks.swift` and the URLs in App Store Connect together.
@@ -51,6 +53,9 @@ Never add it to a build destined for App Store Connect.
       `CURRENT_PROJECT_VERSION` must increase on every upload, even a rejected one.
 - [ ] `Scripts/fetch-llama.sh` has been run in this checkout.
 - [ ] `xcodebuild -project Sotto.xcodeproj -scheme Sotto -destination 'platform=macOS,arch=arm64' test` is green.
+      Run the whole scheme, not `-only-testing:SottoTests`. `SottoUITests` covers the sandboxed
+      export, and CI cannot: it builds with `CODE_SIGNING_ALLOWED=NO`, so no entitlements are
+      applied and a sandbox fault is invisible there.
 - [ ] `xcodebuild -project Sotto.xcodeproj -scheme Sotto -destination 'platform=iOS Simulator,name=iPhone 17' test` is green.
 - [ ] `cd Packages/LlamaKit && swift test` is green.
 - [ ] Product › Archive for iOS, then for macOS. Archive from the **Release** configuration —
@@ -106,7 +111,12 @@ Getting this wrong is a common rejection under guideline 2.3.6 and a common remo
 
 `ITSAppUsesNonExemptEncryption` is `false` in the Info.plist, so the per-upload prompt is
 gone. This is correct: Sotto uses only the system's HTTPS/TLS and the system keychain, both
-exempt. If you ever add your own cryptography, revisit this key.
+exempt.
+
+The **Hash text** tool computes SHA-256/384/512 through CryptoKit. That does not change the
+answer — a hash is a one-way digest, not encryption; nothing is enciphered and nothing can be
+recovered — and the implementation is the system's, not Sotto's. Adding cryptography that
+*enciphers* data, on the other hand, would mean revisiting this key.
 
 ### Content rights
 
@@ -164,10 +174,20 @@ be. Do not add weights to the app bundle.
 > The app says so on the welcome screen, on the empty chat screen and in Settings › About, and
 > the age rating reflects it.
 >
-> **Tools.** The five tools that ship enabled run entirely on the device (date and time,
-> calculator, unit conversion, text statistics, and a search of the person's own past chats).
-> Tools that use the network are switched off until the person supplies their own credentials,
-> and default to asking for approval before each call.
+> **Tools.** Sotto has twenty-five built-in tools, every one of which runs on the device and
+> touches nothing outside the app. Four are on out of the box: date and time, a calculator,
+> a unit converter, and a search of the person's own past chats. The other twenty-one are
+> switched off until the person turns them on, because Apple's on-device model has a fixed
+> context window and every offered tool spends part of it. Tools that use the network — a
+> Google search, or an HTTPS request the person defines — are switched off until the person
+> supplies their own credentials, and ask for approval before each call.
+>
+> **Menu bar (macOS).** Sotto puts an item in the menu bar: a field that hands a question to a
+> chat in the main window, the five most recent chats, and shortcuts to the other windows.
+> Because that item needs an app behind it, closing the last window leaves Sotto running
+> instead of quitting; ⌘Q, the panel's own **Quit Sotto** and the Dock's Quit all quit it, and
+> turning **Show in menu bar** off in Settings › General restores quit-on-close. Sotto is not a
+> background-only app: it keeps its Dock icon and its windows, and `LSUIElement` is not set.
 >
 > **Privacy policy:** https://github.com/yasasalwis/Sotto/blob/main/PRIVACY.md
 > **Support:** https://github.com/yasasalwis/Sotto/blob/main/SUPPORT.md

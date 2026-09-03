@@ -424,6 +424,7 @@ struct InstalledModelRow: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
         .card(radius: 12)
+        .contextMenu { menuItems }
         #else
         HStack(spacing: 12) {
             ModelGlyph(descriptor: descriptor, size: 36)
@@ -432,14 +433,12 @@ struct InstalledModelRow: View {
                 MonoText(subtitle, size: 11, color: descriptor.isAvailable ? Theme.Colors.hint : Theme.Colors.danger)
             }
             Spacer()
-            if isDefault {
-                labelBadge("default", accent: true)
-            } else {
-                menu
-            }
+            if isDefault { labelBadge("default", accent: true) }
+            menu
         }
         .padding(16)
         .card(radius: 14)
+        .contextMenu { menuItems }
         #endif
     }
 
@@ -450,31 +449,39 @@ struct InstalledModelRow: View {
         return parts.joined(separator: " · ")
     }
 
+    @ViewBuilder
+    private var menuItems: some View {
+        Button("Set as default") { services.settings.defaultModelRef = model.modelRef }.disabled(isDefault || !descriptor.isAvailable)
+        if isLoaded {
+            Button("Unload") { Task { await services.runtime.unload() } }
+        } else {
+            Button("Load now") { Task { _ = try? await services.runtime.model(for: model) } }.disabled(!descriptor.isAvailable || isLoading)
+        }
+        #if os(macOS)
+        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([services.store.fileURL(for: model)]) }
+        #endif
+        Divider()
+        Button("Delete \(Format.bytes(model.fileSizeBytes)) from disk…", role: .destructive, action: onDelete)
+    }
+
     private var menu: some View {
         Menu {
-            Button("Set as default") { services.settings.defaultModelRef = model.modelRef }.disabled(isDefault || !descriptor.isAvailable)
-            if isLoaded {
-                Button("Unload") { Task { await services.runtime.unload() } }
-            } else {
-                Button("Load now") { Task { _ = try? await services.runtime.model(for: model) } }.disabled(!descriptor.isAvailable || isLoading)
-            }
-            #if os(macOS)
-            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([services.store.fileURL(for: model)]) }
-            #endif
-            Divider()
-            Button("Delete…", role: .destructive, action: onDelete)
+            menuItems
         } label: {
             #if os(macOS)
             Text("···").font(.system(size: 15)).foregroundStyle(Theme.Colors.placeholder)
             #else
-            Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Theme.Colors.placeholder)
+            // An ellipsis reads as "more actions"; the chevron here read as navigation, so the
+            // only way to delete a model was hidden — and absent entirely on the default one.
+            Image(systemName: "ellipsis.circle").font(.system(size: 17)).foregroundStyle(Theme.Colors.hint)
             #endif
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Model actions")
+        .accessibilityLabel("Actions for \(model.name)")
+        .accessibilityIdentifier("model.actions")
     }
 }
 

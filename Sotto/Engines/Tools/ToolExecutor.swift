@@ -405,13 +405,21 @@ enum BuiltInTools {
         return "\(formatNumber(value)) \(source.symbol) = \(formatNumber(rounded)) \(target.symbol)"
     }
 
+    /// Average adult reading speed, used only to decide whether a reading time is worth quoting.
+    static let wordsReadPerMinute = 220.0
+
     static func textStatistics(_ text: String) -> String {
         let characters = text.count
         let words = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
         let sentences = text.split(whereSeparator: { ".!?".contains($0) })
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
-        let minutes = words == 0 ? 0 : max(1, Int((Double(words) / 220).rounded(.up)))
-        return "\(characters) characters, \(words) words, \(sentences) sentences, about \(minutes) min to read"
+        // Reading time only when there is enough text for it to mean anything. The old floor
+        // reported "about 1 min to read" for a five-letter word, which is both nonsense and an
+        // invitation: a model that has just been handed a duration goes looking for something to
+        // convert it into, and "1 min" became a convert_units call and a wrong answer.
+        let minutes = Int((Double(words) / Self.wordsReadPerMinute).rounded())
+        let base = "\(characters) characters, \(words) words, \(sentences) sentences"
+        return minutes >= 1 ? base + ", about \(minutes) min to read" : base
     }
 
     static func searchConversations(_ query: String, context: ModelContext) -> String {

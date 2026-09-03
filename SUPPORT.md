@@ -85,8 +85,17 @@ stay on disk until you erase them.
 
 ## Tools
 
-Sotto ships five tools that run entirely on your device — date and time, calculator, unit
-converter, text statistics and a search of your own past chats. Those need no setup.
+Sotto has twenty-five built-in tools that run entirely on your device — dates and time zones,
+arithmetic and units, percentages and number bases, text rewriting, find-and-replace,
+extraction, sorting, word counts and diffs, JSON and CSV, descriptive statistics, encoding,
+hashing, random numbers, and a search of your own past chats. None of them needs setup.
+
+Four are on out of the box: date and time, calculator, unit converter and chat search. The
+rest are one switch away in **Tools**. They are not on by default because every tool you
+enable is described to the model before your conversation starts, and Apple's on-device model
+has a small fixed context window — past roughly twenty offered tools it stops answering
+altogether. Switching on the handful you actually use works better than switching on
+everything.
 
 You can also create tools that reach the internet. Those are off until you configure them,
 and default to **Ask every time**, which shows you the exact request before anything is sent.
@@ -112,6 +121,17 @@ calls.
 **Turning tools off**
 One switch at the top of **Tools** disables the whole feature. A persona can also be
 restricted to local-only, in which case it never sees a tool that uses the network.
+
+## The menu bar (macOS)
+
+Sotto puts an item in the menu bar: a field that hands a question straight to a chat, your five
+most recent chats, and a way into the library, compare, tools, presets and settings windows.
+
+**Sotto keeps running after I close its window**
+That is deliberate: the menu bar item needs an app behind it. **Quit Sotto** in the panel, ⌘Q
+and the Dock's Quit all quit it as usual. To get the old behaviour back — where closing the
+last window quits Sotto — turn **Show in menu bar** off in **Settings › General**, and the
+menu bar item goes away with it.
 
 ## Privacy and security
 

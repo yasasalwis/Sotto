@@ -21,7 +21,7 @@ enum TextTools {
         switch style {
         case "upper": return text.uppercased()
         case "lower": return text.lowercased()
-        case "title": return words(in: text).map(capitalisedFirst).joined(separator: " ")
+        case "title": return words(in: text).map { capitalisedFirst($0) }.joined(separator: " ")
         case "sentence": return sentenceCase(text)
         case "snake": return words(in: text).map { $0.lowercased() }.joined(separator: "_")
         case "kebab", "slug": return words(in: text).map { $0.lowercased() }.joined(separator: "-")

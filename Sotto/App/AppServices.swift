@@ -116,6 +116,26 @@ final class AppServices {
         Log.chat.notice("Marked \(interrupted.count) interrupted message(s) as stopped")
     }
 
+    /// Debug affordance: `-startCatalogDownload <catalog id>` begins a download at launch, so the
+    /// download path can be exercised in the real app from the command line. See RUNBOOK.md.
+    #if DEBUG
+    func startCatalogDownloadIfRequested() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flag = arguments.firstIndex(of: "-startCatalogDownload"), arguments.count > flag + 1 else { return }
+        let identifier = arguments[flag + 1]
+        guard let entry = catalog.entries.first(where: { $0.id == identifier }) else {
+            Log.downloads.error("No catalog entry called \(identifier, privacy: .public)")
+            return
+        }
+        do {
+            _ = try downloads.start(entry)
+            Log.downloads.notice("Started \(entry.name, privacy: .public) from the command line")
+        } catch {
+            Log.downloads.error("Command-line download failed to start: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+    #endif
+
     func refreshCatalogIfDue() async {
         guard CatalogRefresher.isDue(settings: settings) else { return }
         _ = await CatalogRefresher.refresh(catalog: catalog, settings: settings)

@@ -168,7 +168,7 @@ enum BuiltInToolID: String, Codable, CaseIterable, Identifiable, Sendable {
 
 /// Settings for the Google search tool. The API key is not here: it lives in the keychain,
 /// looked up by the tool's id, so it never enters the database or an export.
-struct WebSearchConfig: Codable, Hashable, Sendable {
+nonisolated struct WebSearchConfig: Codable, Hashable, Sendable {
     /// The Programmable Search Engine id, shown as "cx" in Google's console.
     var searchEngineID: String = ""
     var resultCount: Int = 5
@@ -179,7 +179,7 @@ struct WebSearchConfig: Codable, Hashable, Sendable {
     static let resultCountRange = 1...10
 }
 
-struct HTTPToolConfig: Codable, Hashable, Sendable {
+nonisolated struct HTTPToolConfig: Codable, Hashable, Sendable {
     var urlTemplate: String = "https://"
     var method: String = "GET"
     var headers: [String: String] = [:]
@@ -188,7 +188,7 @@ struct HTTPToolConfig: Codable, Hashable, Sendable {
     var responsePath: String = ""
 }
 
-struct ShellToolConfig: Codable, Hashable, Sendable {
+nonisolated struct ShellToolConfig: Codable, Hashable, Sendable {
     var command: String = ""
 }
 
@@ -394,7 +394,7 @@ final class ToolDefinition {
             ToolDefinition(
                 name: BuiltInToolID.textStatistics.rawValue,
                 displayName: "Text statistics",
-                summary: "Counts the characters, words, sentences and reading time of a passage the user supplied. Use it only when the user asks how long their own text is, for example “how many words is this paragraph”. Never call it because of how the user asked you to answer: “in one word”, “briefly”, “in short” and “keep it under 20 words” describe your reply, they are not text to measure. Never measure your own answer, and never measure a word the user simply asked you to say.",
+                summary: "Counts the characters, words, sentences and reading time of a passage the user supplied. Use it only when the user asks how long their own text is, such as “how many words is this paragraph”. Never call it because of how the user asked you to answer: “in one word”, “briefly” and “in short” describe your reply, not text to measure. Never measure your own answer.",
                 kind: .builtIn,
                 parameters: [ToolParameter(name: "text", type: .string, summary: "The text to measure")],
                 approval: .automatic,

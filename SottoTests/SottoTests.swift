@@ -263,6 +263,20 @@ struct SettingsStoreTests {
         #expect(store.bytesSentThisMonth == 0)
     }
 
+    @Test func downloadsStartedSinceLaunchSurviveRestore() {
+        // The bug: reattaching to background downloads read `allTasks`, which suspends, and any
+        // download the user started in that window was marked "interrupted" and lost its task.
+        #expect(DownloadManager.isOrphaned(state: .downloading, isTracked: true) == false)
+        #expect(DownloadManager.isOrphaned(state: .queued, isTracked: true) == false)
+        // A record left behind by a previous launch has no task and is still fair game.
+        #expect(DownloadManager.isOrphaned(state: .downloading, isTracked: false))
+        #expect(DownloadManager.isOrphaned(state: .queued, isTracked: false))
+        // Settled states are never touched.
+        for state in [DownloadState.paused, .failed, .completed] {
+            #expect(DownloadManager.isOrphaned(state: state, isTracked: false) == false)
+        }
+    }
+
     @Test func launchArgumentStringsAreReadAsFlags() {
         let suite = UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!
         // The argument domain hands over strings, which a plain `as? Bool` cast would miss.

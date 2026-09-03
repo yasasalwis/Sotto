@@ -77,14 +77,16 @@ final class SottoUITests: XCTestCase {
         XCTAssertTrue(export.isEnabled, "A conversation exists, so export should be offered")
         export.tap()
 
-        // The save panel belongs to Powerbox, not to Sotto, when the app is sandboxed.
-        let panel = XCUIApplication(bundleIdentifier: "com.apple.appkit.xpc.openAndSavePanelService")
-        let saveButton = panel.buttons["OKButton"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 20), "The save panel should appear")
-        panel.typeKey("g", modifierFlags: [.command, .shift])
-        panel.typeText(file.path)
-        panel.typeKey(.return, modifierFlags: [])
-        saveButton.click()
+        // The panel is drawn by an XPC service, so it never joins Sotto's accessibility tree and
+        // has to be driven by keystrokes, which reach whatever holds key focus: ⇧⌘G, the path,
+        // return to go there, return to save. The pauses are the panel's own animations.
+        Thread.sleep(forTimeInterval: 3)
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        Thread.sleep(forTimeInterval: 2)
+        app.typeText(file.path)
+        app.typeKey(.return, modifierFlags: [])
+        Thread.sleep(forTimeInterval: 2)
+        app.typeKey(.return, modifierFlags: [])
 
         let written = expectation(description: "the export file appears")
         let deadline = Date().addingTimeInterval(20)

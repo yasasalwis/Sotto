@@ -47,6 +47,16 @@ struct BuiltInToolTests {
         #expect(stats.contains("2 sentences"))
     }
 
+    /// A reading time is quoted only when there is enough text to have one. Reporting "about 1 min
+    /// to read" for a single word was both wrong and the start of a chain: the model took the
+    /// duration it had just been handed and called the unit converter on it.
+    @Test func shortTextGetsNoReadingTime() {
+        #expect(!BuiltInTools.textStatistics("hello").contains("min to read"))
+        #expect(!BuiltInTools.textStatistics("Hello there. This is a test!").contains("min to read"))
+        let long = String(repeating: "word ", count: 500)
+        #expect(BuiltInTools.textStatistics(long).contains("2 min to read"))
+    }
+
     @Test func datetimeMentionsTheTimeZone() {
         #expect(BuiltInTools.currentDateTime().contains(TimeZone.current.identifier))
     }

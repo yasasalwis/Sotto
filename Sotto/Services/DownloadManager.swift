@@ -27,6 +27,11 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
     var backgroundCompletionHandler: (() -> Void)?
 
     @ObservationIgnored private var session: URLSession!
+    /// Used when the background transfer service will not talk to us. Downloads then run in
+    /// process: they stop if the app quits, which is better than not downloading at all.
+    @ObservationIgnored private var foregroundSession: URLSession?
+    /// Records already retried on the foreground session, so a genuine failure is not retried forever.
+    @ObservationIgnored private var retriedInForeground: Set<UUID> = []
     @ObservationIgnored private var tasks: [UUID: URLSessionDownloadTask] = [:]
     @ObservationIgnored private var lastPersisted: [UUID: Date] = [:]
     @ObservationIgnored private var speedWindow: [UUID: (Date, Int64)] = [:]
@@ -47,7 +52,7 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         configuration.isDiscretionary = false
         configuration.sessionSendsLaunchEvents = true
         configuration.waitsForConnectivity = true
-        configuration.allowsCellularAccess = !settings.wifiOnlyDownloads
+        configuration.allowsCellularAccess = Self.allowsCellular(wifiOnly: settings.wifiOnlyDownloads)
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         Task { await restore() }
     }
@@ -92,12 +97,18 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         record.state = .paused
         record.updatedAt = .now
         persist()
+        // URLSession calls this back on its own queue, so the record itself must not travel:
+        // a SwiftData model belongs to the main actor's context. Only its id crosses, and the
+        // record is fetched again on the way back in — by then the download may have been
+        // deleted, which is why the task entry is cleared before the record is looked up.
+        let id = record.id
         task.cancel { [weak self] data in
             Task { @MainActor in
-                guard let self else { return }
+                guard let manager = self else { return }
+                manager.tasks[id] = nil
+                guard let record = manager.record(withID: id) else { return }
                 record.resumeData = data
-                self.tasks[record.id] = nil
-                self.persist()
+                manager.persist()
                 Log.downloads.info("Paused \(record.name, privacy: .public)")
             }
         }
@@ -132,10 +143,11 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     // MARK: - Internals
 
-    private func beginTask(for record: ModelDownload, resumeData: Data?) {
+    private func beginTask(for record: ModelDownload, resumeData: Data?, inForeground: Bool = false) {
+        let transport = inForeground ? foregroundTransport() : session!
         let task: URLSessionDownloadTask
         if let resumeData {
-            task = session.downloadTask(withResumeData: resumeData)
+            task = transport.downloadTask(withResumeData: resumeData)
         } else {
             guard let url = record.url else {
                 record.state = .failed
@@ -144,9 +156,9 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
                 return
             }
             var request = URLRequest(url: url)
-            request.allowsCellularAccess = !settings.wifiOnlyDownloads
+            request.allowsCellularAccess = Self.allowsCellular(wifiOnly: settings.wifiOnlyDownloads)
             request.setValue("Sotto/1.0 (local-first chat client)", forHTTPHeaderField: "User-Agent")
-            task = session.downloadTask(with: request)
+            task = transport.downloadTask(with: request)
         }
         task.taskDescription = record.id.uuidString
         task.countOfBytesClientExpectsToReceive = record.totalBytes
@@ -154,6 +166,49 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         record.state = .downloading
         live[record.id] = LiveProgress(received: record.receivedBytes, total: record.totalBytes, bytesPerSecond: 0, updatedAt: .now)
         task.resume()
+    }
+
+    /// Reattaches to downloads the system kept running across launches. Reading `allTasks`
+    /// suspends, and the user can press Download in that window, so anything started meanwhile is
+    /// left strictly alone: its task stays in `tasks` and its record keeps its state.
+    private func foregroundTransport() -> URLSession {
+        if let foregroundSession { return foregroundSession }
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = Self.allowsCellular(wifiOnly: settings.wifiOnlyDownloads)
+        let created = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        foregroundSession = created
+        Log.downloads.notice("Background transfer unavailable; downloading in process instead")
+        return created
+    }
+
+    /// "Downloads on Wi-Fi only" is an iPhone setting: it has no switch on the Mac, so it must not
+    /// quietly gate the Mac's network. It matters there too because macOS reports a Personal
+    /// Hotspot as cellular, and a blocked task with `waitsForConnectivity` stalls at zero bytes
+    /// forever instead of failing.
+    static func allowsCellular(wifiOnly: Bool) -> Bool {
+        #if os(iOS)
+        return !wifiOnly
+        #else
+        return true
+        #endif
+    }
+
+    /// `nsurlsessiond` is not always reachable — notably for an app run by the test runner or from
+    /// an unusual location — and it reports that only when the first task fails.
+    static func isBackgroundServiceUnavailable(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorBackgroundSessionRequiresSharedContainer,
+                 NSURLErrorBackgroundSessionInUseByAnotherProcess,
+                 NSURLErrorBackgroundSessionWasDisconnected:
+                return true
+            default:
+                break
+            }
+        }
+        return nsError.localizedDescription.localizedCaseInsensitiveContains("background transfer service")
     }
 
     private func restore() async {
@@ -164,19 +219,33 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
                 byID[id] = task
             }
         }
-        tasks = byID
+        for (id, task) in byID where tasks[id] == nil {
+            tasks[id] = task
+        }
         guard let records = try? context.fetch(FetchDescriptor<ModelDownload>()) else { return }
+        var orphaned = 0
         for record in records {
             if let task = byID[record.id] {
                 record.state = .downloading
                 live[record.id] = LiveProgress(received: task.countOfBytesReceived, total: record.totalBytes, bytesPerSecond: 0, updatedAt: .now)
-            } else if record.state == .downloading || record.state == .queued {
-                record.state = record.resumeData != nil ? .paused : .failed
-                if record.state == .failed { record.errorMessage = "The download was interrupted. Tap retry to start again." }
+                continue
+            }
+            guard Self.isOrphaned(state: record.state, isTracked: tasks[record.id] != nil) else { continue }
+            orphaned += 1
+            record.state = record.resumeData != nil ? .paused : .failed
+            if record.state == .failed {
+                record.errorMessage = "The download was interrupted. Tap retry to start again."
             }
         }
         persist()
-        Log.downloads.info("Restored \(records.count) download records, \(byID.count) live tasks")
+        Log.downloads.info("Restored \(records.count) download records, \(byID.count) live tasks, \(orphaned) orphaned")
+    }
+
+    /// A record left mid-flight by a previous launch: not attached to a live task, and not one we
+    /// started ourselves since launching.
+    static func isOrphaned(state: DownloadState, isTracked: Bool) -> Bool {
+        guard !isTracked else { return false }
+        return state == .downloading || state == .queued
     }
 
     private func persist() {
@@ -217,6 +286,16 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
             record.updatedAt = now
             persist()
         }
+    }
+
+    /// The system is holding the request because it has no network it is allowed to use. Say so,
+    /// rather than showing a download that never moves.
+    private func markWaitingForNetwork(id: UUID) {
+        guard let record = record(withID: id), record.receivedBytes == 0 else { return }
+        record.errorMessage = "Waiting for a network Sotto is allowed to use."
+        record.updatedAt = .now
+        persist()
+        Log.downloads.notice("Download for \(record.name, privacy: .public) is waiting for connectivity")
     }
 
     private func handleCompletion(id: UUID, stagedFile: URL, bytesSent: Int64) {
@@ -264,6 +343,15 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
             }
             return
         }
+        if Self.isBackgroundServiceUnavailable(error), !retriedInForeground.contains(id) {
+            retriedInForeground.insert(id)
+            record.state = .downloading
+            record.errorMessage = nil
+            record.updatedAt = .now
+            persist()
+            beginTask(for: record, resumeData: resumeData, inForeground: true)
+            return
+        }
         record.state = resumeData != nil ? .paused : .failed
         record.resumeData = resumeData
         record.errorMessage = error.localizedDescription
@@ -278,6 +366,13 @@ final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         guard let description = downloadTask.taskDescription, let id = UUID(uuidString: description) else { return }
         Task { @MainActor in
             self.handleProgress(id: id, received: totalBytesWritten, expected: totalBytesExpectedToWrite)
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        guard let description = task.taskDescription, let id = UUID(uuidString: description) else { return }
+        Task { @MainActor in
+            self.markWaitingForNetwork(id: id)
         }
     }
 

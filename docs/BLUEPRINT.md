@@ -30,7 +30,7 @@ A local-first chat client. Two engines: Apple's on-device foundation model (`Fou
 | Repudiation | n/a (single user) | — |
 | Information disclosure | Conversations leaving the device | No network path carries user text. PCC is disabled because the OS offers none. Bytes sent are counted and shown. Logs never include content. iOS file protection on the store; optional biometric lock. |
 | Denial of service | Huge attachments or prompts exhausting memory | Attachment caps (25 MB / 60k chars), prompt trimming to the context window, memory fit check before loading a model, cooperative cancellation with llama.cpp abort callback. |
-| Elevation of privilege | Sandbox escape via file access | macOS App Sandbox with read-only user-selected files and network client only; imports are copied into the container and the source is never written. |
+| Elevation of privilege | Sandbox escape via file access | macOS App Sandbox with user-selected files and network client only; the grant is read-write because export saves to a file the user picks in the save panel, and nothing else writes outside the container — imports are copied in and the source is never written. |
 
 Highest-risk surfaces: (1) GGUF parsing in native code — mitigated by validation and pinning a recent llama.cpp; (2) background downloads writing to disk — validated before entering the library; (3) attachments read from arbitrary files — text-only extraction, capped.
 
@@ -109,6 +109,16 @@ Users can add HTTPS-request tools (URL template with `{argument}` placeholders, 
 | Calculator safety | `NSExpression` raises Objective-C exceptions Swift cannot catch, so arithmetic uses a hand-written recursive-descent parser supporting `+ - * / % ^`, unary minus and parentheses. |
 | No model-supplied patterns | `replace_text` matches literally and `extract_matches` offers eight fixed, audited patterns rather than accepting a regular expression. Built-ins run without the shell tool's timeout, so a pattern that backtracks catastrophically would hang the reply with nothing able to stop it. This is the same reasoning as the calculator row above. |
 | Tool count is bounded by the window | Every offered tool's description and schema is read into the model's context before the conversation, and Apple's system model has a fixed 4,096 tokens. Measured on iOS 26.5: twenty tools answered and called the right one; twenty-four failed outright with a bare `GenerationError` before running anything; and at two fifths of the window the session managed four tool calls before the accumulated results overflowed it. So the twenty tools added after the original five **ship switched off** — turning them all on by default would have broken the app's own model on first launch — and `AppleIntelligenceEngine` trims whatever is enabled to a quarter of the window, keeping the user's order, skipping what will not fit and logging what it left out. A smaller menu also makes a 3B model choose better: with fifteen tools offered it looped between two of them, with ten it made one correct call. |
+
+### Downloads: two defects found in the field
+
+| Defect | Cause | Fix |
+|---|---|---|
+| A freshly started download immediately read "The download was interrupted" | Reattaching to background downloads awaits `allTasks`, which suspends. A download started in that window was not in the snapshot, so reconciliation marked it interrupted and replaced the task table, dropping its handle. | Reconciliation now merges rather than replaces, and skips any record this launch already started (`DownloadManager.isOrphaned`). |
+| Downloads sat at zero bytes forever on macOS, with no error | "Downloads on Wi-Fi only" is an iPhone setting with no Mac switch, but it was applied on both, and macOS reports a Personal Hotspot as cellular. With `waitsForConnectivity` the blocked task stalls silently instead of failing. | The rule is applied on iOS only, and a task the system is holding now says "Waiting for a network Sotto is allowed to use" instead of showing a download that never moves. |
+
+Where the background transfer service refuses to talk to the app at all, the download falls back to
+an in-process session: it stops if the app quits, which is better than a download that cannot start.
 
 ## Known limitations / next phase
 

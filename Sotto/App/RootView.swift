@@ -51,6 +51,9 @@ struct RootView: View {
             if services.persistenceFailure != nil {
                 services.state.showError("Conversations aren't being saved", "Sotto couldn't open its database, so this session is in memory only. Quit and relaunch; if it keeps happening, use Settings › Advanced › Reset.")
             }
+#if DEBUG
+            services.startCatalogDownloadIfRequested()
+            #endif
             await services.refreshCatalogIfDue()
         }
         .fileImporter(isPresented: $state.isImportingModel, allowedContentTypes: [.gguf, .data], allowsMultipleSelection: false) { result in

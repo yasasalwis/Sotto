@@ -1,7 +1,7 @@
 import Foundation
 
 /// Identifies which model a conversation, persona or message uses.
-enum ModelRef: Hashable, Sendable, Codable {
+nonisolated enum ModelRef: Hashable, Sendable, Codable {
     case apple
     case gguf(UUID)
 

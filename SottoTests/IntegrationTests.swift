@@ -153,29 +153,100 @@ struct IntegrationTests {
         }
     }
 
+    /// The same restraint check, but with `text_statistics` switched on the way a user may switch
+    /// it on. It is excluded from the test above because it ships disabled, which meant the one
+    /// tool observed to misfire on “say hello in one word” was never actually offered to a live
+    /// model here. This reproduces that configuration and records what the model did, so the
+    /// wording of a description can be judged on evidence rather than on how careful it reads.
+    ///
+    /// Gated with the others: it measures Apple's model, not our code, and a 3B model misfires
+    /// often enough that it must never redden CI.
+    @Test func textStatisticsStaysOutOfAGreeting() async throws {
+        guard ProcessInfo.processInfo.environment["SOTTO_TEST_TOOL_RESTRAINT"] != nil else { return }
+        guard AppleIntelligenceEngine.isAvailable else {
+            Log.app.notice("Skipping text statistics restraint test: \(AppleIntelligenceEngine.unavailableReason ?? "unavailable")")
+            return
+        }
+        let seeds = ToolDefinition.builtInSeeds()
+        let tools = seeds.filter { $0.isUsable || $0.builtIn == .textStatistics }.map(\.spec)
+        #expect(tools.contains { $0.name == BuiltInToolID.textStatistics.rawValue })
+
+        let recorder = RecordingToolRunner()
+        let engine = AppleIntelligenceEngine()
+        var report = ""
+        var misfires = 0
+        for prompt in ["say hello in one word", "answer with one word only: reopened", "hi there"] {
+            recorder.calls.removeAll()
+            var request = GenerationRequest(
+                systemPrompt: nil,
+                turns: [ChatTurn(role: .user, content: prompt)],
+                sampling: SamplingSettings(temperature: 0.2, topP: 0.9, maxTokens: 64),
+                seed: 4
+            )
+            request.tools = tools
+            var text = ""
+            for try await event in engine.generate(request, toolRunner: recorder) {
+                if case .delta(let delta) = event { text += delta }
+                if case .replace(let full) = event { text = full }
+            }
+            let called = recorder.calls
+            // The contract is the answer, not the chip. Measured against the live model, a tool
+            // is still reached for on these prompts whatever the descriptions say — so what has
+            // to hold is that a spurious call cannot corrupt the reply, which is what the user
+            // sees. A count or a duration leaking into a greeting is the regression to catch.
+            if text.contains(where: \.isNumber) { misfires += 1 }
+            report += "“\(prompt)” → calls: [\(called.joined(separator: ", "))] → \(text.prefix(140))\n"
+        }
+        try? Data(report.utf8).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("sotto-restraint.txt"))
+        #expect(misfires == 0, "a spurious tool result reached the answer:\n\(report)")
+    }
+
+    /// Sanity probe: can this process reach the network at all? Distinguishes a broken download
+    /// path from a test host that simply has no network.
+    @Test func theTestHostCanReachTheNetwork() async throws {
+        guard ProcessInfo.processInfo.environment["SOTTO_TEST_DOWNLOAD"] != nil else { return }
+        let url = try #require(URL(string: "https://huggingface.co/api/models/bartowski/Qwen2.5-0.5B-Instruct-GGUF"))
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        var note = ""
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            note = "shared session: HTTP \(code), \(data.count) bytes"
+        } catch {
+            note = "shared session failed: \(error.localizedDescription)"
+        }
+        #expect(note.contains("HTTP 200"), "\(note)")
+    }
+
     /// Starts a real catalog download and waits for the first bytes. Gated because it touches the
-    /// network; the point is to catch the download path silently doing nothing.
+    /// network. It builds its own manager on an in-memory store so two concurrent test hosts do not
+    /// reconcile each other's rows.
     @Test func catalogDownloadsTransferBytes() async throws {
         guard ProcessInfo.processInfo.environment["SOTTO_TEST_DOWNLOAD"] != nil else { return }
-        let services = AppServices()
-        let entry = try #require(services.catalog.entries.min(by: { $0.sizeBytes < $1.sizeBytes }))
-        let record = try services.downloads.start(entry)
-        defer { services.downloads.cancel(record) }
+        let container = try ModelContainer(
+            for: PersistenceController.schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+        )
+        let settings = SettingsStore(defaults: UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!)
+        let catalog = try ModelCatalog.loadBundled()
+        let manager = DownloadManager(store: ModelStore(), settings: settings, container: container, catalog: catalog)
+        let entry = try #require(catalog.entries.min(by: { $0.sizeBytes < $1.sizeBytes }))
+
+        let record = try manager.start(entry)
+        defer { manager.cancel(record) }
 
         var received: Int64 = 0
         for _ in 0..<80 {
             try await Task.sleep(for: .milliseconds(500))
-            received = services.downloads.live[record.id]?.received ?? record.receivedBytes
-            if received > 0 { break }
-            if record.state == .failed { break }
+            received = manager.live[record.id]?.received ?? record.receivedBytes
+            if received > 0 || record.state == .failed { break }
         }
-        let diagnosis = "state=\(record.state.rawValue) received=\(received) error=\(record.errorMessage ?? "none")\n"
-        try? Data(diagnosis.utf8).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("sotto-download.txt"))
         #expect(
             received > 0,
-            "no bytes after 40s — state \(record.state.rawValue), error \(record.errorMessage ?? "none")"
+            "no bytes in 40s — state \(record.state.rawValue), error \(record.errorMessage ?? "none")"
         )
-        withExtendedLifetime(services) {}
+        withExtendedLifetime((container, manager)) {}
     }
 
     /// Apple's model reads every offered tool into its 4,096-token window and, past roughly twenty,
