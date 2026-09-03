@@ -243,12 +243,40 @@ later change can be spotted.
 > The app's own name on the device is still **Sotto** — `CFBundleDisplayName` is untouched.
 > Only the store listing carries the longer name.
 
-### Still outstanding before Submit for Review
+### Submitted
 
-- [ ] **Upload a build.** Both archives validate locally but nothing is uploaded yet. Needs an
-      Apple Distribution certificate; Xcode creates one on first App Store export.
-- [ ] **App Review contact** — first name, last name, phone and email, on both the iOS and the
-      macOS version page. Required to submit.
+Both platforms went to App Review on 3 September 2026 and are **Waiting for Review**.
+
+| | iOS | macOS |
+|---|---|---|
+| Version | 1.0 | 1.0 |
+| Build | 1.0 (3), from Xcode Cloud | 1.0 (3), from Xcode Cloud |
+| Status | Waiting for Review | Waiting for Review |
+
+App Review contact on both: Yasas Alwis, +94769722082, yasaslive@gmail.com. Sign-in not
+required. Release is set to **automatic** on approval — change it on the version page if you
+would rather hold the launch.
+
+### Xcode Cloud
+
+Workflow **Default** builds `main` from `github.com/yasasalwis/Sotto`, with two actions,
+Archive - iOS and Archive - macOS. Two things had to be fixed before it produced a usable
+build, and both will bite again if they are undone:
+
+1. **`ci_scripts/ci_post_clone.sh`** vendors llama.cpp. `Packages/LlamaKit/llama.xcframework`
+   is git-ignored, so a fresh clone has nothing behind LlamaKit's `llama` binary target and
+   package resolution fails with *"does not contain a binary artifact"*. It passes `--no-sim`,
+   which is correct only while the workflow has no Simulator test action.
+2. **Distribution Preparation = App Store Connect** on both archive actions. It defaults to
+   *None*, which produces a green build whose archive never reaches App Store Connect — the
+   build looks fine and no build ever appears on the version page.
+
+### Still outstanding
+
 - [ ] **`AppLinks.sourceCode`** points at `https://github.com/yasasalwis/Sotto`, which returns
-      404. It is a live link in Settings › About, so it 404s for users. Make the repository
-      public, point it elsewhere, or drop the link.
+      404 to anyone not signed in — the repository is private. It is a live link in
+      Settings › About, so it fails for every user. Make the repository public, point it
+      elsewhere, or drop the link. Not a submission blocker; it is a broken link in a
+      shipping build.
+- [ ] If review comes back asking about the age rating, the answers behind the 18+ override
+      are recorded in section 3.
