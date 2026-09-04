@@ -368,6 +368,17 @@ App Review contact on both: Yasas Alwis, +94769722082, yasaslive@gmail.com. Sign
 required. Release is set to **automatic** on approval — change it on the version page if you
 would rather hold the launch.
 
+### Submitted on build 1.0 (11)
+
+Both platforms went back to App Review on 4 September 2026 — macOS at 7:15 PM, iOS at 7:17 PM,
+both on **build 1.0 (11)** from Xcode Cloud, both **Waiting for Review**. The earlier submissions
+on build 3 were removed rather than left in the queue: a reviewer typing on the empty chat screen
+would have met the keyboard bug, which is a Guideline 2.1 rejection waiting to happen.
+
+Attaching a new build means removing the version from review first (App Store Connect will not
+swap a build underneath a submission), so both lost their place in the queue. That was the right
+trade against shipping a build whose composer disappears behind the keyboard.
+
 ### Second round of TestFlight fixes
 
 Build 1.0 (5) came back with "Continues asking for chat history and apologize": "what is a LLM"
