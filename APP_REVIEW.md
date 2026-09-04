@@ -368,6 +368,47 @@ App Review contact on both: Yasas Alwis, +94769722082, yasaslive@gmail.com. Sign
 required. Release is set to **automatic** on approval — change it on the version page if you
 would rather hold the launch.
 
+### Second round of TestFlight fixes
+
+Build 1.0 (5) came back with "Continues asking for chat history and apologize": "what is a LLM"
+called *Search my chats* four times, every one failed, and the reply opened with an apology. Three
+causes, all fixed in 1.0 (7):
+
+- **The arguments never arrived.** The gateway asked the model for a JSON object inside a string
+  and it sent the search words bare, which parsed to `{}` and failed the tool's required `query`.
+  A tool with one required text parameter now takes a bare value directly.
+- **Nothing stopped the retry.** A per-reply ledger refuses a tool after two failures and tells the
+  model to answer without it.
+- **The catalogue had lost its restraint.** Summarising each tool to its first sentence dropped the
+  "Do not call it for general knowledge" guidance the descriptions carry — a regression introduced
+  with the summaries. The preamble now says it once, for all tools.
+
+Tool-call cards are hidden outright on iOS when the setting is off, failures included.
+
+Build 1.0 (6) then reported **"This conversation is longer than the model's context window"** on a
+short chat. That was accounting, not length: `PromptBuilder` trimmed history against the raw
+context length while the engine separately wrote the tool definitions into the same window, and
+nothing subtracted them. Engines now report a measured `toolFootprintTokens` and `ChatSession`
+reserves it before trimming. The schema-per-tool path had the same gap all along.
+
+### Memory, context ceiling and subagents
+
+- **Conversations remember past the window.** Turns that no longer fit are folded into a running
+  digest rather than dropped, rebuilt after a turn that had to drop something so no reply waits on
+  it. On Apple's fixed 4,096 tokens this is the difference between a model that contradicts itself
+  after five exchanges and one that does not.
+- **The context picker goes to 131,072** — the largest any catalogue model is trained for (Llama
+  3.2, Phi-3.5 mini). Nothing needed to change to make that safe: the runtime already clamps to
+  `min(setting, the model's own length)` and refuses a load that will not fit. **256K is not
+  reachable** — no catalogue model is trained that far, and a 3B model would need roughly 30 GB of
+  KV cache to try.
+- **Subagents.** A `delegate` tool hands one self-contained task to a second session with its own
+  window and returns only the answer. One shot: no tools, no nesting, task capped at 2,000
+  characters. Ships switched off and asks before each run, because it costs a whole extra
+  generation.
+
+Built-ins are now **twenty-six**; four still ship enabled.
+
 ### TestFlight feedback, and what it changed
 
 The first TestFlight session on a physical iPhone 15 Pro (iOS 26.6.1, build 1.0 (3)) produced two
