@@ -784,7 +784,9 @@ struct KeychainStoreTests {
         // A summary is capped, so the biggest a line gets is roughly thirty tokens.
         let wordy = spec("wordy", String(repeating: "long description ", count: 400))
         let small = spec("small", "tiny")
-        let kept = DynamicToolGateway.fittingCatalogue([wordy, small], budget: 12)
+        // The preamble is charged to the same budget, so leave room for it plus a little.
+        let budget = TokenEstimator.estimate(DynamicToolGateway.preamble) + 12
+        let kept = DynamicToolGateway.fittingCatalogue([wordy, small], budget: budget)
         #expect(kept.map(\.name) == ["small"])
     }
 

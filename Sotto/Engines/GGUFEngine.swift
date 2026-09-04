@@ -16,6 +16,12 @@ final class GGUFEngine: InferenceEngine {
     let countsTokensExactly = true
 
     var contextLength: Int {
+
+    /// llama.cpp gets its tools as text in the system prompt, which the prompt builder never sees.
+    func toolFootprintTokens(for tools: [ToolSpec], dynamic: Bool) -> Int {
+        guard !tools.isEmpty else { return 0 }
+        return TokenEstimator.estimate(ToolPromptFormatter.instructions(for: tools))
+    }
         if let model = runtime.loadedModel, runtime.loadedModelID == record.id {
             return model.contextLength
         }

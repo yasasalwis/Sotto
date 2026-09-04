@@ -21,11 +21,14 @@ nonisolated struct DynamicToolGateway: Tool {
 
     static let toolName = "use_tool"
 
-    /// The same quarter of the window the schema-per-tool path is allowed
-    /// (`AppleIntelligenceEngine.toolDefinitionTokenBudget`) — spent on names, parameter lists and
-    /// one sentence each instead of full `GenerationSchema`s. That is the whole trade: the same
-    /// budget now holds the entire library rather than the twenty tools schemas managed.
-    static let catalogueTokenBudget = AppleIntelligenceEngine.toolDefinitionTokenBudget
+    /// A third of the window for the preamble and every tool line together.
+    ///
+    /// Wider than the quarter the schema-per-tool path gets, because this budget also carries the
+    /// preamble — and because it now buys the *whole* library rather than the twenty tools that
+    /// fitted as schemas. Overrunning it no longer risks the turn: `ChatSession` subtracts the
+    /// measured footprint from the prompt budget, so a larger menu costs conversation history
+    /// rather than failing outright.
+    static let catalogueTokenBudget = AppleIntelligenceEngine.fixedContextLength / 3
 
     /// Longest catalogue summary. Tool descriptions run to a few hundred characters because they
     /// also say when *not* to call the tool; that guidance is what `usageRule` covers here, so the
@@ -51,7 +54,9 @@ nonisolated struct DynamicToolGateway: Tool {
     /// The tools whose catalogue lines fit the budget, in the order the person put them in.
     static func fittingCatalogue(_ specs: [ToolSpec], budget: Int = catalogueTokenBudget) -> [ToolSpec] {
         var kept: [ToolSpec] = []
-        var used = 0
+        // The preamble is part of the description the model is charged for, so it comes out of the
+        // same budget rather than riding on top of it.
+        var used = TokenEstimator.estimate(preamble)
         for spec in specs {
             let cost = TokenEstimator.estimate(line(for: spec))
             guard used + cost <= budget else { continue }
@@ -86,12 +91,18 @@ nonisolated struct DynamicToolGateway: Tool {
     }
 
     static func catalogue(for specs: [ToolSpec]) -> String {
+        preamble + specs.map { line(for: $0) }.joined(separator: "\n")
+    }
+
+    /// Everything in the description that is not a tool line. Counted against the budget too, so
+    /// that editing this text can never quietly push the whole description over the window — which
+    /// is exactly what happened when the general-knowledge rule was added.
+    static let preamble: String = {
         var text = "Runs one of this device's tools and returns its result. "
         text += ToolPromptFormatter.usageRule
         text += "\n\nAnswer general-knowledge questions yourself. \"What is X\", \"explain Y\" and \"how does Z work\" are answered from what you already know and are never a reason to call a tool. Call one only when the user asks for something you cannot do by writing an answer: search their own past chats, compute a number exactly, convert units, or work on text they gave you.\n\nSet \"tool\" to exactly one name from the list below, and \"arguments\" to a JSON object of that tool's parameters — for example {\"expression\": \"12 * 7\"}. When a tool takes a single value you may pass that value on its own. Do not invent a tool that is not listed.\n\n"
-        text += specs.map { line(for: $0) }.joined(separator: "\n")
         return text
-    }
+    }()
 
     static func schema() throws -> GenerationSchema {
         let root = DynamicGenerationSchema(

@@ -37,6 +37,26 @@ final class AppleIntelligenceEngine: InferenceEngine {
         return kept
     }
 
+    /// What the framework will write into the window for these tools, so the prompt builder can
+    /// leave room for it. Measured the same way the text is actually built, rather than guessed.
+    func toolFootprintTokens(for tools: [ToolSpec], dynamic: Bool) -> Int {
+        Self.toolFootprintTokens(for: tools, dynamic: dynamic)
+    }
+
+    static func toolFootprintTokens(for tools: [ToolSpec], dynamic: Bool) -> Int {
+        guard !tools.isEmpty else { return 0 }
+        if dynamic {
+            let listed = DynamicToolGateway.fittingCatalogue(tools)
+            return TokenEstimator.estimate(DynamicToolGateway.catalogue(for: listed)) + dispatcherSchemaTokens
+        }
+        return toolsFittingBudget(tools).reduce(0) { total, spec in
+            total + TokenEstimator.estimate("\(spec.name): \(spec.description)\n\(spec.parametersSchemaJSON)")
+        }
+    }
+
+    /// The dispatcher's own two-property schema, which the catalogue text does not include.
+    static let dispatcherSchemaTokens = 80
+
     /// The tools handed to the session: one dispatcher when dynamic tool calling is on, otherwise
     /// as many full schemas as the window will take.
     static func tools(for request: GenerationRequest, runner: ToolRunner) -> [any Tool] {

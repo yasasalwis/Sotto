@@ -163,9 +163,19 @@ protocol InferenceEngine {
     var countsTokensExactly: Bool { get }
     func countTokens(_ text: String) async throws -> Int
     func generate(_ request: GenerationRequest, toolRunner: ToolRunner?) -> AsyncThrowingStream<GenerationEvent, Error>
+    /// Tokens this engine spends describing `tools` before the conversation begins.
+    ///
+    /// These are invisible to `PromptBuilder`, which trims history against `contextLength` alone.
+    /// Left unaccounted, a full history plus the tool definitions can overrun the window and the
+    /// turn fails outright — on Apple's engine with `exceededContextWindowSize`. Callers subtract
+    /// this from the budget they hand the builder.
+    func toolFootprintTokens(for tools: [ToolSpec], dynamic: Bool) -> Int
 }
 
 extension InferenceEngine {
+    /// Engines that put nothing extra in the window.
+    func toolFootprintTokens(for tools: [ToolSpec], dynamic: Bool) -> Int { 0 }
+
     /// Generation without tools, used by Compare and by any caller that doesn't run them.
     func generate(_ request: GenerationRequest) -> AsyncThrowingStream<GenerationEvent, Error> {
         generate(request, toolRunner: nil)

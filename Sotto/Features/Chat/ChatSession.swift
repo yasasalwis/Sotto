@@ -42,6 +42,10 @@ final class ChatSession: ToolRunner {
     @ObservationIgnored private var currentAssistant: Message?
     @ObservationIgnored private var toolCallsThisTurn = 0
 
+    /// Never trim the conversation below this, however many tools are offered — a window with no
+    /// room for the question is worse than one that drops a tool.
+    static let minimumUsableContext = 1024
+
     init(conversation: Conversation, services: AppServices, context: ModelContext) {
         self.conversation = conversation
         self.services = services
@@ -210,20 +214,27 @@ final class ChatSession: ToolRunner {
             assistant.modelLabel = ModelRegistry.descriptor(for: modelRef, installed: installed, runtime: services.runtime)?.shortLabel
             let sampling = SamplingSettings.resolve(persona: persona, conversation: conversation)
             let turns = PromptBuilder.turns(from: conversation.orderedMessages, upTo: boundary)
+            // Tool definitions are written into the window by the engine, not by the prompt, so
+            // the history has to be trimmed against what is left after them. Without this the two
+            // together overrun the window and the turn fails outright.
+            let tools = availableTools
+            let toolSpecs = tools.map(\.spec)
+            let usesDynamicTools = services.settings.dynamicToolCalling
+            let toolReserve = engine.toolFootprintTokens(for: toolSpecs, dynamic: usesDynamicTools)
+            let usableContext = max(Self.minimumUsableContext, engine.contextLength - toolReserve)
             let built = try await PromptBuilder.build(
                 turns: turns,
                 systemPrompt: persona?.systemPrompt,
                 sampling: sampling,
-                contextLength: engine.contextLength
+                contextLength: usableContext
             ) { text in
                 try await engine.countTokens(text)
             }
             droppedTurns = built.droppedTurns
             var promptTokens = built.estimatedPromptTokens
-            let tools = availableTools
             var request = built.request
-            request.tools = tools.map(\.spec)
-            request.usesDynamicToolCalling = services.settings.dynamicToolCalling
+            request.tools = toolSpecs
+            request.usesDynamicToolCalling = usesDynamicTools
             currentAssistant = assistant
             toolCallsThisTurn = 0
             Log.chat.info("Generating with \(engine.displayName, privacy: .public): \(built.request.turns.count) turns, ~\(promptTokens) prompt tokens, dropped \(built.droppedTurns), \(tools.count) tools")
