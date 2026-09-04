@@ -222,9 +222,13 @@ final class ChatSession: ToolRunner {
             let usesDynamicTools = services.settings.dynamicToolCalling
             let toolReserve = engine.toolFootprintTokens(for: toolSpecs, dynamic: usesDynamicTools)
             let usableContext = max(Self.minimumUsableContext, engine.contextLength - toolReserve)
+            let systemPrompt = ConversationMemory.systemPrompt(
+                base: persona?.systemPrompt,
+                digest: conversation.memoryDigest
+            )
             let built = try await PromptBuilder.build(
                 turns: turns,
-                systemPrompt: persona?.systemPrompt,
+                systemPrompt: systemPrompt,
                 sampling: sampling,
                 contextLength: usableContext
             ) { text in
@@ -232,6 +236,7 @@ final class ChatSession: ToolRunner {
             }
             droppedTurns = built.droppedTurns
             var promptTokens = built.estimatedPromptTokens
+            let turnsToRemember = turns
             var request = built.request
             request.tools = toolSpecs
             request.usesDynamicToolCalling = usesDynamicTools
@@ -267,6 +272,7 @@ final class ChatSession: ToolRunner {
             if assistant.state == .streaming {
                 assistant.state = .complete
             }
+            await refreshMemoryDigest(engine: engine, turns: turnsToRemember, dropped: built.droppedTurns)
         } catch is CancellationError {
             assistant.state = .cancelled
         } catch {
@@ -279,6 +285,66 @@ final class ChatSession: ToolRunner {
         pendingToolApproval = nil
         currentAssistant = nil
         conversation.updatedAt = .now
+        save()
+    }
+
+    /// What the transcript says about turns that no longer fit. "Left out" was accurate before
+    /// there was a digest; now they are usually still there in summary, and saying so is the
+    /// difference between the model looking forgetful and looking as though it remembers.
+    var droppedTurnsNote: String {
+        let count = droppedTurns
+        if conversation.digestedMessageCount >= count, !conversation.memoryDigest.isEmpty {
+            return "\(count) earlier turns summarised to fit the context window"
+        }
+        return "\(count) earlier turns left out to fit the context window"
+    }
+
+    // MARK: - Memory
+
+    /// Folds turns that no longer fit into the conversation's running digest.
+    ///
+    /// Runs after the reply, never before it: a summary is worth having but not worth making the
+    /// person wait for, and a conversation that fits the window never reaches this at all. Only the
+    /// turns dropped since the last digest are folded in, so nothing is summarised twice.
+    private func refreshMemoryDigest(engine: InferenceEngine, turns: [ChatTurn], dropped: Int) async {
+        let alreadyCovered = conversation.digestedMessageCount
+        guard dropped > alreadyCovered, dropped <= turns.count else { return }
+        let newlyDropped = Array(turns[alreadyCovered..<dropped])
+        guard !newlyDropped.isEmpty else { return }
+
+        let prompt = ConversationMemory.digestPrompt(previous: conversation.memoryDigest, turns: newlyDropped)
+        var sampling = SamplingSettings.resolve(persona: nil, conversation: conversation)
+        sampling.maxTokens = ConversationMemory.digestResponseTokens
+        // Summarising is a recall task, not a creative one.
+        sampling.temperature = 0.2
+        let request = GenerationRequest(
+            systemPrompt: "You write terse, factual summaries. You never invent detail.",
+            turns: [ChatTurn(role: .user, content: prompt)],
+            sampling: sampling,
+            seed: nil
+        )
+
+        var text = ""
+        do {
+            for try await event in engine.generate(request) {
+                switch event {
+                case .delta(let delta): text += delta
+                case .replace(let whole): text = whole
+                default: break
+                }
+            }
+        } catch {
+            // A failed summary is not worth surfacing: the turn already succeeded, and the next
+            // one will try again with the same turns still uncovered.
+            Log.chat.warning("Could not refresh the conversation digest: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        let digest = ConversationMemory.clean(text)
+        guard !digest.isEmpty else { return }
+        conversation.memoryDigest = digest
+        conversation.digestedMessageCount = dropped
+        Log.chat.info("Digest now covers \(dropped, privacy: .public) turns, \(digest.count, privacy: .public) characters")
         save()
     }
 

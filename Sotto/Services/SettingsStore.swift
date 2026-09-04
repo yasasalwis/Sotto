@@ -64,7 +64,16 @@ final class SettingsStore {
         #endif
     }
 
-    static let contextLengthChoices = [2048, 4096, 8192, 16384, 32768]
+    /// Offered context sizes for llama.cpp models. The top of this list is not a promise: the
+    /// runtime clamps to the model's own trained length (`min(setting, record.contextLength)`) and
+    /// refuses a load that would not fit in memory, so asking for more than a model or a device can
+    /// carry costs nothing.
+    ///
+    /// 131,072 is the ceiling because it is the largest context any model in the catalogue was
+    /// trained for — Llama 3.2 and Phi-3.5 mini; everything else is 32K or 8K. Beyond a model's
+    /// trained length the output degrades rather than improves, and the KV cache alone runs to
+    /// ~15 GB for a 3B model at 131K. Apple's own model is fixed at 4,096 and ignores this.
+    static let contextLengthChoices = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

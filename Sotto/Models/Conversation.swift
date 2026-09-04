@@ -14,6 +14,15 @@ final class Conversation {
     var topPOverride: Double?
     var maxTokensOverride: Int?
     var isTitleGenerated: Bool
+    /// A running recap of turns that no longer fit the context window.
+    ///
+    /// Without it the oldest turns were simply dropped and the model lost them — on Apple's
+    /// 4,096-token window that happens quickly. The digest is rebuilt after a turn that had to
+    /// drop something, so it costs nothing on the turns that fit.
+    var memoryDigest: String = ""
+    /// How many of `orderedMessages` the digest already covers, so the same turn is never folded
+    /// in twice.
+    var digestedMessageCount: Int = 0
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
 

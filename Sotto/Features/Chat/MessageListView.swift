@@ -16,7 +16,7 @@ struct MessageListView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: rowSpacing) {
                     if session.droppedTurns > 0 {
-                        MonoText("\(session.droppedTurns) earlier turns left out to fit the context window", size: 10, color: Theme.Colors.faint)
+                        MonoText(session.droppedTurnsNote, size: 10, color: Theme.Colors.faint)
                             .frame(maxWidth: .infinity)
                     }
                     ForEach(messages) { message in

@@ -875,3 +875,50 @@ struct KeychainStoreTests {
     }
 }
 
+
+@Suite struct ConversationMemoryTests {
+    @Test func digestLeadsTheSystemPromptAndKeepsThePersona() {
+        let prompt = ConversationMemory.systemPrompt(base: "You are terse.", digest: "User is called Yasas. Shipping an app.")
+        let text = try! #require(prompt)
+        #expect(text.contains("Earlier in this conversation"))
+        #expect(text.contains("User is called Yasas"))
+        #expect(text.contains("You are terse."))
+        // The digest has to come first: it is context the instruction is read against.
+        #expect(text.range(of: "User is called Yasas")!.lowerBound < text.range(of: "You are terse.")!.lowerBound)
+    }
+
+    @Test func anEmptyDigestLeavesThePersonaUntouched() {
+        #expect(ConversationMemory.systemPrompt(base: "You are terse.", digest: "") == "You are terse.")
+        #expect(ConversationMemory.systemPrompt(base: "You are terse.", digest: "   \n ") == "You are terse.")
+        #expect(ConversationMemory.systemPrompt(base: nil, digest: "") == nil)
+    }
+
+    @Test func digestPromptCarriesTheEarlierSummaryAndTheNewTurns() {
+        let turns = [
+            ChatTurn(role: .user, content: "Call the project Sotto."),
+            ChatTurn(role: .assistant, content: "Noted."),
+        ]
+        let prompt = ConversationMemory.digestPrompt(previous: "User prefers British spelling.", turns: turns)
+        #expect(prompt.contains("User prefers British spelling."))
+        #expect(prompt.contains("User: Call the project Sotto."))
+        #expect(prompt.contains("Assistant: Noted."))
+    }
+
+    @Test func digestPromptOmitsTheSummarySectionOnTheFirstFold() {
+        let prompt = ConversationMemory.digestPrompt(previous: "", turns: [ChatTurn(role: .user, content: "Hello")])
+        #expect(!prompt.contains("Summary so far"))
+    }
+
+    @Test func stripsThePreambleASmallModelPutsInFront() {
+        #expect(ConversationMemory.clean("Here is the summary: User is called Yasas.") == "User is called Yasas.")
+        #expect(ConversationMemory.clean("```markdown\nUser ships apps.\n```") == "User ships apps.")
+    }
+
+    @Test func trimsAnOverlongDigestOnALineBoundary() {
+        let long = (0..<200).map { "- note number \($0)" }.joined(separator: "\n")
+        let cleaned = ConversationMemory.clean(long)
+        #expect(cleaned.count <= ConversationMemory.maximumCharacters)
+        #expect(!cleaned.hasSuffix("-"), "should not stop mid-note")
+        #expect(cleaned.contains("note number 0"))
+    }
+}
