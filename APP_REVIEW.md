@@ -146,54 +146,145 @@ be. Do not add weights to the app bundle.
 
 ---
 
-## 4. Review notes — paste into App Review Information
+## 4. Review notes — the answer to the Guideline 2.1 information request
 
-> Sotto is a free, offline-first chat app. There is no account, no server, no analytics and no
-> in-app purchase of any kind.
+macOS 1.0 was rejected on 4 September 2026 under **Guideline 2.1 — Information Needed (New App
+Submission)**. It is not a bug report: Apple asks every developer account with a limited review
+history for a screen recording plus five written answers, and asks that the written answers also
+live in the Notes field for future submissions.
+
+The Notes field caps at **4,000 characters**, so the notes were rewritten to answer Apple's
+questions in Apple's own numbering rather than to describe the app freely. Both platforms are
+updated and saved in App Store Connect. Keep this file and the field in step.
+
+The two texts differ only where the platform does: the macOS copy names the menu bar item, the
+keyboard shortcuts and the compiled-out shell tool; the iOS copy says Airplane Mode and drops
+those. Everything else is identical.
+
+The source link is there deliberately. A 2.1 request goes to accounts App Review does not know
+yet, and a public repository is the cheapest way for a reviewer to check the claims that matter
+most here — no server, no analytics, inference on the device. It only works while the repository
+stays public.
+
+> Sotto is a free, offline-first AI chat app. No account, no server, no analytics, no ads and no
+> in-app purchase of any kind. Answers to the Guideline 2.1 questions follow, numbered as asked.
 >
-> **How to test it in under a minute.** Sotto can use Apple's on-device model or an
-> open-source model you download in the app.
+> **2. PURPOSE AND AUDIENCE**
+> Sotto runs a language model entirely on the device: ask questions, draft and rewrite text,
+> summarise documents, get help with code. Mainstream AI chat apps send every message to a
+> company's server; Sotto sends nothing. Inference happens on this Mac, so it works with the
+> network off and a conversation never leaves the machine. For privacy-conscious general users,
+> students, writers, developers, and anyone handling confidential material. Rated 18+ because
+> model output is unfiltered.
 >
-> - If the review device has Apple Intelligence enabled, tap **Start chatting** on the welcome
->   screen and send a message. It answers on-device with no download and no network.
-> - If Apple Intelligence is not available on the review device, the welcome screen says so.
->   Open **Library**, download **Qwen2.5 0.5B Instruct** (approximately 380 MB, the smallest
->   entry, roughly a minute on a good connection), then start a chat. Everything after the
->   download works with the device offline.
+> **3. SETTING UP AND REACHING THE MAIN FEATURES**
+> No sign-in, no credentials, no sample files needed. Sotto uses either Apple's on-device model
+> or an open-source model downloaded in the app.
+> - If Apple Intelligence is on, click "Start with Apple Intelligence" on the welcome screen and
+>   send a message. It answers on-device, with no download and no network.
+> - If it is unavailable, the welcome screen says so and the button reads "Start chatting". Open
+>   Model Library (Shift-Command-L),
+>   download "Qwen2.5 0.5B Instruct" — 398 MB, the smallest entry and first in the list, about a
+>   minute — then start a chat. Everything after the download works with the Mac offline.
 >
-> **Network use.** Inference always runs on the device; nothing typed into a chat is
-> transmitted. The only outbound requests are: a model download the person starts, an optional
-> weekly check of the model catalog (off by default), and optional tools the person configures
-> themselves. Settings › Privacy shows a live count of the bytes the app has actually sent.
+> Elsewhere: Presets & Personas (Shift-Command-P) for system prompts, Compare Models
+> (Shift-Command-K) for two models side by side, Tools (Shift-Command-T), and Settings › Privacy
+> for a live count of the bytes the app has sent. Sotto also puts an item in the menu bar that
+> hands a question to a chat; it keeps its Dock icon and its windows, `LSUIElement` is not set,
+> and Command-Q quits.
 >
-> **Downloaded files are data, not code.** A `.gguf` file is a set of model weights read by the
-> bundled llama.cpp inference library. Nothing downloaded is executed, and the app's
-> functionality does not change based on what is downloaded. Downloads are restricted in code
-> to `https://huggingface.co`.
+> **4. EXTERNAL SERVICES**
+> None for core functionality. Inference is Apple's FoundationModels framework plus the bundled
+> llama.cpp library, both on-device. There is no authentication service, payment processor,
+> analytics SDK, ad network or third-party AI API. The only outbound requests are:
+> - `huggingface.co` — a model download the person starts, and an optional weekly catalogue check
+>   that is off by default. Downloads are restricted in code to `https://huggingface.co`.
+> - `googleapis.com/customsearch/v1` — an optional Google Programmable Search tool, inert until
+>   the person supplies their own API key.
+> - a URL the person writes themselves in the optional HTTPS-request tool.
 >
-> **Generated text.** Sotto runs models locally and does not filter or fact-check their output.
-> The app says so on the welcome screen, on the empty chat screen and in Settings › About, and
-> the age rating reflects it.
+> A downloaded `.gguf` file is model weights read as data by llama.cpp. Nothing downloaded is
+> executed and the app's functionality does not change (guideline 2.5.2). The macOS
+> shell-command tool is compiled out of App Store builds.
 >
-> **Tools.** Sotto has twenty-five built-in tools, every one of which runs on the device and
-> touches nothing outside the app. Four are on out of the box: date and time, a calculator,
-> a unit converter, and a search of the person's own past chats. The other twenty-one are
-> switched off until the person turns them on, because Apple's on-device model has a fixed
-> context window and every offered tool spends part of it. Tools that use the network — a
-> Google search, or an HTTPS request the person defines — are switched off until the person
-> supplies their own credentials, and ask for approval before each call.
+> **5. REGIONAL DIFFERENCES**
+> None. The same features and content ship in all 175 regions — no geo-gating, no regional
+> pricing, no region-specific content, and no server that could vary by region. The one variation
+> is Apple's own: where Apple Intelligence is unavailable, the welcome screen says so and the
+> person downloads a model instead.
 >
-> **Menu bar (macOS).** Sotto puts an item in the menu bar: a field that hands a question to a
-> chat in the main window, the five most recent chats, and shortcuts to the other windows.
-> Because that item needs an app behind it, closing the last window leaves Sotto running
-> instead of quitting; ⌘Q, the panel's own **Quit Sotto** and the Dock's Quit all quit it, and
-> turning **Show in menu bar** off in Settings › General restores quit-on-close. Sotto is not a
-> background-only app: it keeps its Dock icon and its windows, and `LSUIElement` is not set.
+> **6. REGULATED INDUSTRY AND THIRD-PARTY MATERIAL**
+> Sotto is not in a regulated industry and offers no medical, legal or financial advice. It
+> bundles and redistributes no model weights. The in-app catalogue links to each publisher's own
+> files on Hugging Face and shows the publisher and licence for every entry (Apache-2.0, MIT,
+> Llama 3.2 Community License, Gemma Terms of Use, Qwen Research License). The bundled llama.cpp
+> inference library is MIT-licensed and is named in Settings › About.
+>
+> **GENERATED TEXT**
+> Sotto does not filter or fact-check what a model produces, and says so on the welcome screen,
+> on the empty chat screen and in Settings › About. The age rating reflects it. No content is
+> shared between users, so there is nothing to report or block.
 >
 > **Privacy policy:** https://sotto.eonix.lk/privacy
 > **Support:** https://sotto.eonix.lk/support
+> **Source code:** https://github.com/yasasalwis/Sotto
 
----
+### The welcome-screen button is named twice
+
+`OnboardingView` line 63 (the Mac layout) labels the primary button
+`appleAvailable ? "Start with Apple Intelligence" : "Start chatting"`. The compact layout used on
+iOS (line 151) always says **Start chatting**.
+
+So the macOS notes must say *Start with Apple Intelligence* for the Apple-Intelligence path — the
+earlier wording sent a reviewer looking for a button that is not on screen when the feature is on,
+which is the exact path the notes recommend. The iOS notes are correct as they stand. This was
+caught by running the Release build rather than by reading the code, and it is worth re-checking
+whenever the onboarding copy changes.
+
+### Item 1 — the screen recording
+
+Apple's first item is the one the Notes field cannot satisfy: **a screen recording made on a
+physical device running the latest OS**, starting from app launch and showing the typical user
+flow. It has to be attached to the Resolution Center reply, one per platform.
+
+Sotto has no account, no user-generated content and nothing paid, so the three sub-cases Apple
+lists do not apply — say so in the reply rather than leaving them unanswered. What the recording
+must show, in order:
+
+1. Launching the app from the Home Screen or Dock — not a build already running.
+2. The welcome screen, including the generated-text notice.
+3. Either sending a message to Apple's on-device model, or the Library download of
+   Qwen2.5 0.5B Instruct followed by a chat. Show a real answer streaming in.
+4. Enough of Personas, Compare, Tools and Settings › Privacy to make the feature set legible.
+
+Keep it two to three minutes. On iOS, record with the built-in screen recorder on a physical
+iPhone; the Simulator is not a physical device and Apple will say so. On macOS, record this Mac
+with a Release build, not a Debug one — Debug compiles the shell tool in.
+
+**The macOS recording is done** (`Sotto-macOS-demo.mp4`, 75 s, sent 4 September 2026). How it
+was made, because the same recipe is what makes it safe to repeat:
+
+- **Record against a throwaway container, never your own.** Copy the Release `.app`, change
+  `CFBundleIdentifier` (e.g. `lk.eonix.sotto.rev2`), re-sign ad-hoc with the original
+  entitlements (`codesign -d --entitlements :-` to extract them first). A new bundle id means a
+  new container, so the recording shows a genuine first run and cannot touch real conversations
+  or tool settings. A first attempt against the real container clicked a tool toggle by
+  accident; this removes that whole class of mistake.
+- **Drive by accessibility element, not by screen coordinates.** `click button 1 of group 1 of
+  window 1` hits the onboarding button even when another window overlaps; a click at fixed
+  coordinates hits whatever happens to be on top. Guard every keystroke with a check that Sotto
+  is frontmost.
+- **Turn tool calling off in the demo container** (`defaults write <id> toolsEnabled -bool
+  false`). Otherwise the model may call *Search my chats*, the approval card appears, and the
+  answer never arrives — the one thing the recording exists to show.
+- **Crop to the window, do not trust a clean desktop.** Pin every Sotto window to a fixed rect,
+  record the full screen, then `crop=2300:1760:720:140` in ffmpeg. The raw capture contained the
+  Dock, the menu bar, a weather widget naming the city, desktop files and a Finder window. Trim
+  the head with output seeking (`-i input -ss N`, not `-ss N -i input`, which snaps to a
+  keyframe) so the first frame is already the settled welcome screen.
+- **Check the result frame by frame before sending.** A 3×3 contact sheet
+  (`fps=1/9,scale=600:-1,tile=3x3`) catches a stale error banner, a stalled answer or a leaked
+  window in one look.
 
 ## 5. Things to weigh before you submit
 
@@ -203,7 +294,7 @@ Not blockers — decisions that are yours.
   Nothing in App Review objects, but it decides who can install the app. Lowering it means
   checking the Foundation Models availability guards and re-testing.
 - **Reviewers may not have Apple Intelligence enabled**, in which case the first thing they
-  meet is a 380 MB download. The review notes above steer them to the smallest model; keeping
+  meet is a 398 MB download. The review notes above steer them to the smallest model; keeping
   that entry in the catalog and first in the list is worth doing deliberately.
 - **`DEVELOPMENT_TEAM` is hard-coded** in the project (`835LNLUPAJ`). Fine for you, worth
   knowing if anyone else ever builds this.
@@ -245,17 +336,92 @@ later change can be spotted.
 
 ### Submitted
 
-Both platforms went to App Review on 3 September 2026 and are **Waiting for Review**.
+Both platforms went to App Review on 3 September 2026. macOS came back on 4 September under
+Guideline 2.1; iOS has not been picked up yet.
 
 | | iOS | macOS |
 |---|---|---|
 | Version | 1.0 | 1.0 |
 | Build | 1.0 (3), from Xcode Cloud | 1.0 (3), from Xcode Cloud |
-| Status | Waiting for Review | Waiting for Review |
+| Status | Waiting for Review | **Rejected — 2.1 Information Needed** |
+| Submission ID | — | `a79f663e-ab9a-43c8-9904-d4be15e8cd7e` |
+
+The macOS rejection was a request for information, not a defect: Apple asks accounts with a
+limited review history for a screen recording and five written answers. Section 4 is that
+answer, and both Notes fields in App Store Connect were rewritten to match on 4 September 2026.
+
+**Answered and resubmitted on 4 September 2026 at 4:42 PM.** The Resolution Center reply
+(3,998 of the 4,000 characters allowed) went out with `Sotto-macOS-demo.mp4` attached, the
+version item flipped from Rejected to Accepted, and macOS 1.0 is **Waiting for Review** again on
+the same build 1.0 (3) — no app code changed.
+
+> App Store Connect warned that **build 4 was available** and offered to swap. Build 3 was kept:
+> the only commits between them are `272ace9` (CI post-clone script) and `d7c558c` (this file),
+> neither of which touches app code, and build 3 is what the iOS submission also carries.
+> Submitting the same binary on both platforms keeps the two reviews comparable.
+
+**iOS will almost certainly get the same request.** Its Notes field carries the same answers
+already, which may pre-empt it; if it does not, attach an iPhone recording to that reply — and
+that one cannot be produced from this Mac, because it needs a physical iPhone.
 
 App Review contact on both: Yasas Alwis, +94769722082, yasaslive@gmail.com. Sign-in not
 required. Release is set to **automatic** on approval — change it on the version page if you
 would rather hold the launch.
+
+### TestFlight feedback, and what it changed
+
+The first TestFlight session on a physical iPhone 15 Pro (iOS 26.6.1, build 1.0 (3)) produced two
+reports. Both were real, and both are fixed.
+
+**"The chat and the send button is not viable and keyboards cannot hide."** `EmptyChatView` had a
+fixed intrinsic height of roughly 460pt inside a `VStack` with `maxHeight: .infinity`. With the
+keyboard up an iPhone leaves about 416pt, so the stack overflowed and pushed `ComposerView` off
+the bottom of the screen — nothing to type into, and, because nothing on that screen scrolled, no
+way to dismiss the keyboard either. The empty state is now a `ScrollView` that still centres its
+content when it fits, carries `.scrollDismissesKeyboard(.interactively)`, and dismisses on a
+background tap; the transcript got the same scroll-to-dismiss. Verified on an iPhone 17 simulator
+with the software keyboard up: composer visible, send button reachable, swipe puts the keyboard
+away.
+
+**"Hide tool calls. Tools calls when general questions asked."** Asking "what is is LLM" made the
+model call *Search my chats* and then *Unit converter* (`from: years, to: days`), which failed, so
+the reply opened with "I apologize for the confusion." Two causes, two fixes:
+
+- Every enabled tool's full `GenerationSchema` was written into the 4,096-token window up front, so
+  the model was choosing from a menu already in front of it. `DynamicToolGateway` replaces that
+  with a single `use_tool` dispatcher: the model sees one schema plus a list of names and one-line
+  summaries, and has to name a tool deliberately to use it. Same quarter-of-the-window budget as
+  before, but it now holds the **whole** library instead of about twenty tools — there is a test
+  asserting exactly that. Settings › General › **Ask for tools by name** turns it off.
+- The cards themselves are off by default now (**Show tool calls in chat**). A call that *failed*
+  is still shown, because it is usually the reason the answer above it is wrong.
+
+Neither change touches the macOS layout, and both are covered by unit tests in `ToolTests.swift`.
+
+### TestFlight
+
+Set up on 4 September 2026, prompted by the line in Apple's rejection under *Prevent Common
+Issues*: "Apps are reviewed on physical devices to mirror real-world conditions… Use TestFlight
+to distribute builds for beta testing on real devices."
+
+| | |
+|---|---|
+| Group | **Internal Testers** (internal, automatic distribution on — this cannot be changed later) |
+| Tester | `yasaslive@gmail.com`, the account holder — status **Invited** |
+| Builds | iOS 1.0 (3), macOS 1.0 (3), plus iOS 1.0 (1) which automatic distribution picked up on its own |
+| Test Information | Feedback email, privacy-policy URL and beta review contact filled; beta review notes mirror section 4 |
+
+Internal testers need no Beta App Review, so the build is installable as soon as the invitation
+is accepted. **Xcode Cloud builds are never distributed automatically** — the group's automatic
+setting only covers builds uploaded from Xcode, which is why 1.0 (3) had to be added by hand on
+each platform. Do the same for every future Xcode Cloud build.
+
+The iOS build carries a **What to Test** note with the shot list for the App Review recording,
+so the instructions travel with the build instead of living only in this file.
+
+> **Record build 3, not build 1.** Build 1 is an old upload that automatic distribution added;
+> it is not what is under review. TestFlight offers the newest build first, so this only matters
+> if someone scrolls back.
 
 ### Xcode Cloud
 
@@ -273,10 +439,16 @@ build, and both will bite again if they are undone:
 
 ### Still outstanding
 
-- [ ] **`AppLinks.sourceCode`** points at `https://github.com/yasasalwis/Sotto`, which returns
-      404 to anyone not signed in — the repository is private. It is a live link in
-      Settings › About, so it fails for every user. Make the repository public, point it
-      elsewhere, or drop the link. Not a submission blocker; it is a broken link in a
-      shipping build.
+- [ ] The screen recording Apple asked for under Guideline 2.1 — one per platform, made on a
+      physical device. See section 4, "Item 1 — the screen recording". The Resolution Center
+      reply is written and saved as a draft; it needs the recording attached before it is sent.
 - [ ] If review comes back asking about the age rating, the answers behind the 18+ override
       are recorded in section 3.
+
+### Closed
+
+- [x] **`AppLinks.sourceCode`** — `https://github.com/yasasalwis/Sotto` was private, so the
+      "Source" link in Settings › About returned 404 for every user. The repository was made
+      public on 4 September 2026; the URL now answers 200 unauthenticated. Nothing in the code
+      changed. **If the repository is ever made private again, this link breaks in the shipped
+      build** — change `Sotto/Domain/AppLinks.swift` at the same time.

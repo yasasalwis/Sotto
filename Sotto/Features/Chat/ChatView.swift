@@ -1,5 +1,8 @@
 import SwiftData
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct ChatView: View {
     @Bindable var session: ChatSession
@@ -241,6 +244,16 @@ struct ModelPill: View {
         .contentShape(Rectangle())
     }
 }
+
+#if os(iOS)
+/// Resigns first responder across the app. Used where a view has to put the keyboard away but does
+/// not own the `@FocusState` that raised it — tapping the empty chat background, for instance.
+enum KeyboardDismisser {
+    static func dismiss() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+#endif
 
 enum Clipboard {
     static func copy(_ text: String) {

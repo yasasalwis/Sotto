@@ -39,12 +39,42 @@ struct EmptyChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 34) {
+        #if os(iOS)
+        // This screen has a fixed intrinsic height of roughly 460pt. With the keyboard up an
+        // iPhone leaves less room than that, and a plain VStack simply overflows: the composer is
+        // pushed off the bottom, so there is nothing to type into and no way to put the keyboard
+        // away again. A scroll view gives the space back — it still centres the content whenever
+        // the content fits, and only scrolls when it genuinely cannot.
+        GeometryReader { proxy in
+            ScrollView(.vertical) {
+                content
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 22)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { KeyboardDismisser.dismiss() }
+        .onAppear { AppleIntelligenceEngine.prewarm() }
+        #else
+        content
+            .padding(40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { AppleIntelligenceEngine.prewarm() }
+        #endif
+    }
+
+    private var content: some View {
+        VStack(spacing: contentSpacing) {
             VStack(spacing: 12) {
                 Text("What are we working on?")
-                    .font(Theme.Fonts.sans(26, weight: .regular))
+                    .font(Theme.Fonts.sans(titleSize, weight: .regular))
                     .tracking(-0.7)
                     .foregroundStyle(Theme.Colors.ink)
+                    .multilineTextAlignment(.center)
                 MonoText(statusLine, size: 12, color: Theme.Colors.accent)
             }
             suggestionGrid
@@ -54,9 +84,22 @@ struct EmptyChatView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("chat.generatedContentNotice")
         }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { AppleIntelligenceEngine.prewarm() }
+    }
+
+    private var contentSpacing: CGFloat {
+        #if os(macOS)
+        return 34
+        #else
+        return 24
+        #endif
+    }
+
+    private var titleSize: CGFloat {
+        #if os(macOS)
+        return 26
+        #else
+        return 24
+        #endif
     }
 
     private var statusLine: String {

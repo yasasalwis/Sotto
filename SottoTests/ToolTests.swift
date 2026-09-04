@@ -757,3 +757,79 @@ struct KeychainStoreTests {
         #expect(KeychainStore.value(for: account) == nil)
     }
 }
+
+@Suite struct DynamicToolGatewayTests {
+    private func spec(_ name: String, _ description: String = "does a thing", parameters: [ToolParameter] = []) -> ToolSpec {
+        ToolSpec(name: name, description: description, parameters: parameters)
+    }
+
+    @Test func listsRequiredAndOptionalParametersInTheSignature() {
+        let subject = spec("convert_units", "converts between units", parameters: [
+            ToolParameter(name: "value", type: .number, summary: "the amount", isRequired: true),
+            ToolParameter(name: "precision", type: .number, summary: "decimal places", isRequired: false),
+        ])
+        let line = DynamicToolGateway.line(for: subject)
+        #expect(line == "convert_units(value, precision?) — converts between units")
+    }
+
+    @Test func catalogueNamesEveryToolAndCarriesTheRestraintRule() {
+        let text = DynamicToolGateway.catalogue(for: [spec("current_datetime"), spec("calculate")])
+        #expect(text.contains("current_datetime()"))
+        #expect(text.contains("calculate()"))
+        // Without the restraint rule the model treats the dispatcher as an invitation.
+        #expect(text.contains(ToolPromptFormatter.usageRule))
+    }
+
+    @Test func catalogueSkipsToolsThatDoNotFitButKeepsLaterSmallOnes() {
+        // A summary is capped, so the biggest a line gets is roughly thirty tokens.
+        let wordy = spec("wordy", String(repeating: "long description ", count: 400))
+        let small = spec("small", "tiny")
+        let kept = DynamicToolGateway.fittingCatalogue([wordy, small], budget: 12)
+        #expect(kept.map(\.name) == ["small"])
+    }
+
+    @Test func theShippedBuiltInLibraryFitsTheCatalogueBudget() {
+        // The whole point of the gateway: every built-in is offered at once, which the
+        // schema-per-tool path could not manage — it fits about twenty.
+        let specs = ToolDefinition.builtInSeeds().map {
+            ToolSpec(name: $0.name, description: $0.summary, parameters: $0.parameters)
+        }
+        #expect(specs.count > 20, "expected the built-in library to be larger than the old ceiling")
+        #expect(DynamicToolGateway.fittingCatalogue(specs).count == specs.count)
+    }
+
+    @Test func summaryKeepsTheFirstSentenceAndDropsTheRest() {
+        let full = "Returns the current date, time and time zone on this device. Use it when the user asks what the date is. Do not call it for a greeting."
+        #expect(DynamicToolGateway.summary(of: full) == "Returns the current date, time and time zone on this device.")
+    }
+
+    @Test func summaryTruncatesAVeryLongFirstSentenceOnAWordBoundary() {
+        let rambling = String(repeating: "word ", count: 60) + "end."
+        let summary = DynamicToolGateway.summary(of: rambling)
+        #expect(summary.count <= DynamicToolGateway.summaryCharacterLimit + 1)
+        #expect(summary.hasSuffix("…"))
+        #expect(!summary.contains("wor…"), "should cut between words, not inside one")
+    }
+
+    @Test func readsArgumentsFromAJSONString() {
+        #expect(DynamicToolGateway.argumentsJSON(from: "{\"expression\": \"12 * 7\"}") == "{\"expression\":\"12 * 7\"}")
+    }
+
+    @Test func readsArgumentsWrappedInACodeFence() {
+        let fenced = "```json\n{\"query\": \"llm\"}\n```"
+        #expect(DynamicToolGateway.argumentsJSON(from: fenced) == "{\"query\":\"llm\"}")
+    }
+
+    @Test func readsArgumentsSentAsAnObjectRatherThanAString() {
+        #expect(DynamicToolGateway.argumentsJSON(from: ["query": "llm"]) == "{\"query\":\"llm\"}")
+    }
+
+    @Test func fallsBackToAnEmptyObjectRatherThanFailing() {
+        #expect(DynamicToolGateway.argumentsJSON(from: nil) == "{}")
+        #expect(DynamicToolGateway.argumentsJSON(from: "") == "{}")
+        #expect(DynamicToolGateway.argumentsJSON(from: "not json at all") == "{}")
+        // A bare array is valid JSON but not an argument object.
+        #expect(DynamicToolGateway.argumentsJSON(from: "[1, 2]") == "{}")
+    }
+}
+

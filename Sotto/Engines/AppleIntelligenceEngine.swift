@@ -37,6 +37,36 @@ final class AppleIntelligenceEngine: InferenceEngine {
         return kept
     }
 
+    /// The tools handed to the session: one dispatcher when dynamic tool calling is on, otherwise
+    /// as many full schemas as the window will take.
+    static func tools(for request: GenerationRequest, runner: ToolRunner) -> [any Tool] {
+        guard !request.tools.isEmpty else { return [] }
+        if request.usesDynamicToolCalling {
+            do {
+                let gateway = try DynamicToolGateway(specs: request.tools, runner: runner)
+                Log.engine.notice("Offering \(request.tools.count, privacy: .public) tools through one dispatcher")
+                return [gateway]
+            } catch {
+                // A broken dispatcher must not cost the person their tools; fall through to the
+                // schema-per-tool path, which is the behaviour every earlier build shipped.
+                Log.engine.error("Dynamic tool gateway unavailable, offering schemas instead: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        let offered = toolsFittingBudget(request.tools)
+        if offered.count < request.tools.count {
+            let dropped = Set(request.tools.map(\.name)).subtracting(offered.map(\.name)).sorted()
+            Log.engine.notice("Offering \(offered.count, privacy: .public) of \(request.tools.count, privacy: .public) tools to Apple Intelligence; no room in the \(fixedContextLength, privacy: .public)-token window for: \(dropped.joined(separator: ", "), privacy: .public)")
+        }
+        return offered.compactMap { spec in
+            do {
+                return try AppleDynamicTool(spec: spec, runner: runner)
+            } catch {
+                Log.engine.error("Tool \(spec.name, privacy: .public) has an unusable schema: \(error.localizedDescription, privacy: .public)")
+                return nil
+            }
+        }
+    }
+
     let displayName = "Apple Intelligence"
     var contextLength: Int { Self.fixedContextLength }
     let countsTokensExactly = false
@@ -94,20 +124,8 @@ final class AppleIntelligenceEngine: InferenceEngine {
                         toolRule: request.tools.isEmpty ? nil : ToolPromptFormatter.usageRule
                     )
                     // The system model calls tools itself; the runner reports each call to the UI.
-                    let offered = Self.toolsFittingBudget(request.tools)
-                    if offered.count < request.tools.count {
-                        let dropped = Set(request.tools.map(\.name)).subtracting(offered.map(\.name)).sorted()
-                        Log.engine.notice("Offering \(offered.count, privacy: .public) of \(request.tools.count, privacy: .public) tools to Apple Intelligence; no room in the \(Self.fixedContextLength, privacy: .public)-token window for: \(dropped.joined(separator: ", "), privacy: .public)")
-                    }
                     let tools: [any Tool] = toolRunner.map { runner in
-                        offered.compactMap { spec in
-                            do {
-                                return try AppleDynamicTool(spec: spec, runner: runner)
-                            } catch {
-                                Log.engine.error("Tool \(spec.name, privacy: .public) has an unusable schema: \(error.localizedDescription, privacy: .public)")
-                                return nil
-                            }
-                        }
+                        Self.tools(for: request, runner: runner)
                     } ?? []
                     let session = LanguageModelSession(model: .default, tools: tools, transcript: transcript)
 

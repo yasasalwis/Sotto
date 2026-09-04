@@ -229,11 +229,19 @@ struct GeneralPane: View {
                     Toggle("", isOn: $settings.showMenuBarExtra).toggleStyle(SottoToggleStyle()).labelsHidden()
                 }
                 #endif
-                SettingsRow(title: "Let models call tools", detail: "Tools run on this device unless you add one that makes an HTTPS request. Each tool can ask before it runs.", last: true) {
+                SettingsRow(title: "Let models call tools", detail: "Tools run on this device unless you add one that makes an HTTPS request. Each tool can ask before it runs.") {
                     HStack(spacing: 10) {
                         Button("Manage…") { openTools() }.buttonStyle(SecondaryButtonStyle())
                         Toggle("", isOn: $settings.toolsEnabled).toggleStyle(SottoToggleStyle()).labelsHidden()
                     }
+                }
+                SettingsRow(title: "Ask for tools by name", detail: "Apple's on-device model sees one entry and a list of tool names instead of every tool's full schema. That leaves the 4,096-token window to the conversation, lifts the twenty-tool ceiling, and stops the model reaching for a tool nobody asked for. Turn off to hand it every schema up front.") {
+                    Toggle("", isOn: $settings.dynamicToolCalling).toggleStyle(SottoToggleStyle()).labelsHidden()
+                        .disabled(!settings.toolsEnabled)
+                }
+                SettingsRow(title: "Show tool calls in chat", detail: "A card under the reply for each tool a model ran. Off by default — a call that failed is shown either way, because it usually explains the answer above it.", last: true) {
+                    Toggle("", isOn: $settings.showToolCalls).toggleStyle(SottoToggleStyle()).labelsHidden()
+                        .disabled(!settings.toolsEnabled)
                 }
             }
         }

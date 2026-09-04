@@ -24,6 +24,8 @@ final class SettingsStore {
         case flashAttention
         case sendWithEnter
         case toolsEnabled
+        case dynamicToolCalling
+        case showToolCalls
         case showTokenCounter
         case verboseLogging
         case bytesSentMonthKey
@@ -83,6 +85,8 @@ final class SettingsStore {
         flashAttention = FlashAttentionMode(rawValue: defaults.string(forKey: Key.flashAttention.rawValue) ?? "") ?? .auto
         sendWithEnter = Self.bool(defaults, .sendWithEnter, default: true)
         toolsEnabled = Self.bool(defaults, .toolsEnabled, default: true)
+        dynamicToolCalling = Self.bool(defaults, .dynamicToolCalling, default: true)
+        showToolCalls = Self.bool(defaults, .showToolCalls, default: false)
         showTokenCounter = Self.bool(defaults, .showTokenCounter, default: true)
         verboseLogging = Self.bool(defaults, .verboseLogging, default: false)
         bytesSentMonthKey = defaults.string(forKey: Key.bytesSentMonthKey.rawValue) ?? Self.currentMonthKey()
@@ -111,6 +115,12 @@ final class SettingsStore {
     var sendWithEnter: Bool { didSet { defaults.set(sendWithEnter, forKey: Key.sendWithEnter.rawValue) } }
     /// Master switch for tool calling. Off means no tool is offered to any model.
     var toolsEnabled: Bool { didSet { defaults.set(toolsEnabled, forKey: Key.toolsEnabled.rawValue) } }
+    /// Offers the library through one dispatcher tool the model has to name, instead of writing
+    /// every tool's schema into the context window up front. See `DynamicToolGateway`.
+    var dynamicToolCalling: Bool { didSet { defaults.set(dynamicToolCalling, forKey: Key.dynamicToolCalling.rawValue) } }
+    /// Whether a tool call appears as a card in the transcript. Off by default: the call is a
+    /// mechanism, not part of the answer, and on a phone the cards crowd out the reply.
+    var showToolCalls: Bool { didSet { defaults.set(showToolCalls, forKey: Key.showToolCalls.rawValue) } }
     var showTokenCounter: Bool { didSet { defaults.set(showTokenCounter, forKey: Key.showTokenCounter.rawValue) } }
     var verboseLogging: Bool { didSet { defaults.set(verboseLogging, forKey: Key.verboseLogging.rawValue) } }
     var bytesSentMonthKey: String { didSet { defaults.set(bytesSentMonthKey, forKey: Key.bytesSentMonthKey.rawValue) } }
@@ -183,6 +193,8 @@ final class SettingsStore {
         flashAttention = fresh.flashAttention
         sendWithEnter = fresh.sendWithEnter
         toolsEnabled = fresh.toolsEnabled
+        dynamicToolCalling = fresh.dynamicToolCalling
+        showToolCalls = fresh.showToolCalls
         showTokenCounter = fresh.showTokenCounter
         verboseLogging = fresh.verboseLogging
         inspectorVisible = fresh.inspectorVisible

@@ -223,6 +223,7 @@ final class ChatSession: ToolRunner {
             let tools = availableTools
             var request = built.request
             request.tools = tools.map(\.spec)
+            request.usesDynamicToolCalling = services.settings.dynamicToolCalling
             currentAssistant = assistant
             toolCallsThisTurn = 0
             Log.chat.info("Generating with \(engine.displayName, privacy: .public): \(built.request.turns.count) turns, ~\(promptTokens) prompt tokens, dropped \(built.droppedTurns), \(tools.count) tools")

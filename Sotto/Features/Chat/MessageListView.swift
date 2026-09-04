@@ -28,6 +28,11 @@ struct MessageListView: View {
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             }
+            #if os(iOS)
+            // Dragging the transcript puts the keyboard away; without this the only way out of the
+            // keyboard on a phone is to send something.
+            .scrollDismissesKeyboard(.interactively)
+            #endif
             .onChange(of: streamingText.count) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
@@ -69,6 +74,14 @@ struct MessageRow: View {
     let message: Message
     @Bindable var session: ChatSession
     @Environment(AppServices.self) private var services
+
+    /// A tool call is a mechanism, not part of the answer, so the cards stay out of the way
+    /// unless asked for. A call that *failed* is always shown: it is usually the reason the
+    /// reply that follows is wrong, and hiding it would leave that unexplained.
+    private var visibleToolCalls: [ToolCallRecord] {
+        guard !services.settings.showToolCalls else { return message.toolCalls }
+        return message.toolCalls.filter { $0.status == .failed }
+    }
 
     var body: some View {
         switch message.role {
@@ -133,9 +146,9 @@ struct MessageRow: View {
                     MonoText(assistantCaption, size: 11, color: Theme.Colors.hint)
                 }
             }
-            if !message.toolCalls.isEmpty {
+            if !visibleToolCalls.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(message.toolCalls) { record in
+                    ForEach(visibleToolCalls) { record in
                         ToolCallRow(record: record)
                     }
                 }

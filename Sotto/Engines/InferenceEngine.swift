@@ -63,6 +63,9 @@ struct GenerationRequest: Hashable, Sendable {
     var sampling: SamplingSettings
     var seed: UInt32?
     var tools: [ToolSpec] = []
+    /// Offer the library through `DynamicToolGateway` rather than writing every schema into the
+    /// context window. Only Apple's engine reads this; llama.cpp already lists tools in the prompt.
+    var usesDynamicToolCalling: Bool = false
 
     var lastUserTurn: ChatTurn? {
         turns.last(where: { $0.role == .user })
