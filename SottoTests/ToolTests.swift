@@ -956,3 +956,52 @@ struct KeychainStoreTests {
         #expect(seed.approval == .askEveryTime)
     }
 }
+
+@Suite struct ToolRelevanceTests {
+    @Test func generalKnowledgeNeverReachesTheChatSearch() {
+        // The exact message that reached for the chat search in builds 5 and 10.
+        for question in [
+            "What is a large language model?",
+            "What is a LLM",
+            "Explain how diffusion models work",
+            "Who wrote Dune?",
+        ] {
+            #expect(!ToolRelevance.allows(.searchConversations, forUserMessage: question), "\(question) should not reach the chat search")
+        }
+    }
+
+    @Test func aQuestionAboutTheirOwnPastStillReachesIt() {
+        for question in [
+            "What did I call that project last week?",
+            "Remember the name we picked?",
+            "What did you say about the icon earlier?",
+            "Find my notes on pricing",
+            "What did we discuss yesterday?",
+        ] {
+            #expect(ToolRelevance.allows(.searchConversations, forUserMessage: question), "\(question) should reach the chat search")
+        }
+    }
+
+    @Test func matchesWholeWordsOnly() {
+        // "week" must not match "we", "because" must not match "us".
+        #expect(!ToolRelevance.referencesOwnHistory("How many days in a week"))
+        #expect(!ToolRelevance.referencesOwnHistory("Explain because and therefore"))
+        #expect(ToolRelevance.referencesOwnHistory("we agreed on green"))
+    }
+
+    @Test func everyOtherToolIsLeftToTheModel() {
+        // "What is 17 * 23" is general knowledge in form and a fine reason to use arithmetic.
+        #expect(ToolRelevance.allows(.calculator, forUserMessage: "What is 17 * 23?"))
+        #expect(ToolRelevance.allows(.currentDateTime, forUserMessage: "What is the date?"))
+        #expect(ToolRelevance.allows(.delegate, forUserMessage: "Summarise this passage"))
+        #expect(ToolRelevance.allows(nil, forUserMessage: "anything"))
+    }
+}
+
+extension ToolRelevanceTests {
+    @Test func doesNotBlockWhenThereIsNoMessageToJudge() {
+        // Running a tool outside a turn — the editor's "Run once" — has nothing to test against.
+        #expect(ToolRelevance.allows(.searchConversations, forUserMessage: ""))
+        #expect(ToolRelevance.allows(.searchConversations, forUserMessage: "   \n "))
+    }
+}

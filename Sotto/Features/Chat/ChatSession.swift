@@ -362,6 +362,16 @@ final class ChatSession: ToolRunner {
                 success: false, denied: false, bytesSent: 0, durationSeconds: 0
             )
         }
+        // Refused before it becomes a record, so a call that should never have happened does not
+        // cost an approval prompt, a card, or one of the turn's four calls.
+        let askedFor = conversation.orderedMessages.last(where: { $0.role == .user })?.text ?? ""
+        guard ToolRelevance.allows(definition.builtIn, forUserMessage: askedFor) else {
+            Log.chat.notice("Refused \(definition.name, privacy: .public): nothing in the message points at the user's own history")
+            return ToolRunResult(
+                text: ToolRelevance.refusal,
+                success: false, denied: false, bytesSent: 0, durationSeconds: 0
+            )
+        }
         guard toolCallsThisTurn < ToolDefinition.maximumCallsPerTurn else {
             return ToolRunResult(
                 text: "Error: this reply has already used its \(ToolDefinition.maximumCallsPerTurn) tool calls. Answer with what you have.",
