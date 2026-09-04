@@ -811,25 +811,65 @@ struct KeychainStoreTests {
         #expect(!summary.contains("wor…"), "should cut between words, not inside one")
     }
 
+    private var searchSpec: ToolSpec {
+        spec("search_conversations", "Searches earlier chats.", parameters: [
+            ToolParameter(name: "query", type: .string, summary: "Words to look for", isRequired: true),
+        ])
+    }
+
     @Test func readsArgumentsFromAJSONString() {
-        #expect(DynamicToolGateway.argumentsJSON(from: "{\"expression\": \"12 * 7\"}") == "{\"expression\":\"12 * 7\"}")
+        #expect(DynamicToolGateway.argumentsJSON(from: "{\"query\": \"llm\"}", for: searchSpec) == "{\"query\":\"llm\"}")
     }
 
     @Test func readsArgumentsWrappedInACodeFence() {
         let fenced = "```json\n{\"query\": \"llm\"}\n```"
-        #expect(DynamicToolGateway.argumentsJSON(from: fenced) == "{\"query\":\"llm\"}")
+        #expect(DynamicToolGateway.argumentsJSON(from: fenced, for: searchSpec) == "{\"query\":\"llm\"}")
     }
 
     @Test func readsArgumentsSentAsAnObjectRatherThanAString() {
-        #expect(DynamicToolGateway.argumentsJSON(from: ["query": "llm"]) == "{\"query\":\"llm\"}")
+        #expect(DynamicToolGateway.argumentsJSON(from: ["query": "llm"], for: searchSpec) == "{\"query\":\"llm\"}")
+    }
+
+    @Test func acceptsABareValueForAToolWithOneRequiredTextParameter() {
+        // The TestFlight failure: the model sent the search words with no JSON around them, the
+        // argument was dropped, and the tool failed four times over.
+        #expect(DynamicToolGateway.argumentsJSON(from: "llm", for: searchSpec) == "{\"query\":\"llm\"}")
+    }
+
+    @Test func doesNotGuessWhenAToolTakesSeveralRequiredParameters() {
+        let convert = spec("convert_units", "Converts units.", parameters: [
+            ToolParameter(name: "value", type: .number, summary: "amount", isRequired: true),
+            ToolParameter(name: "from", type: .string, summary: "unit", isRequired: true),
+        ])
+        #expect(DynamicToolGateway.argumentsJSON(from: "5 km", for: convert) == "{}")
     }
 
     @Test func fallsBackToAnEmptyObjectRatherThanFailing() {
-        #expect(DynamicToolGateway.argumentsJSON(from: nil) == "{}")
-        #expect(DynamicToolGateway.argumentsJSON(from: "") == "{}")
-        #expect(DynamicToolGateway.argumentsJSON(from: "not json at all") == "{}")
-        // A bare array is valid JSON but not an argument object.
-        #expect(DynamicToolGateway.argumentsJSON(from: "[1, 2]") == "{}")
+        #expect(DynamicToolGateway.argumentsJSON(from: nil, for: searchSpec) == "{}")
+        #expect(DynamicToolGateway.argumentsJSON(from: "", for: searchSpec) == "{}")
+        // Nothing to put a bare value into.
+        let noParameters = spec("current_datetime", "The time now.")
+        #expect(DynamicToolGateway.argumentsJSON(from: "today", for: noParameters) == "{}")
+    }
+
+    @Test func treatsAnythingUnparseableAsTheSingleParameterRatherThanLosingIt() {
+        // Deliberate: for a one-parameter tool, passing the text through is always better than
+        // dropping it, which is what produced the run of failed calls in the first place.
+        #expect(DynamicToolGateway.argumentsJSON(from: "[1, 2]", for: searchSpec) == "{\"query\":\"[1, 2]\"}")
+    }
+
+    @Test func stopsCountingAfterRepeatedFailuresOfTheSameTool() {
+        let ledger = ToolFailureLedger()
+        #expect(ledger.failures(of: "search_conversations") == 0)
+        ledger.recordFailure(of: "search_conversations")
+        ledger.recordFailure(of: "search_conversations")
+        #expect(ledger.failures(of: "search_conversations") >= DynamicToolGateway.repeatedFailureLimit)
+        #expect(ledger.failures(of: "calculate") == 0)
+    }
+
+    @Test func catalogueTellsTheModelToAnswerGeneralKnowledgeItself() {
+        let text = DynamicToolGateway.catalogue(for: [spec("search_conversations")])
+        #expect(text.contains("Answer general-knowledge questions yourself"))
     }
 }
 

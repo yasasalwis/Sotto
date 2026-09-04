@@ -38,6 +38,7 @@ nonisolated struct DynamicToolGateway: Tool {
 
     private let specs: [ToolSpec]
     private let runner: ToolRunner
+    private let ledger = ToolFailureLedger()
 
     init(specs: [ToolSpec], runner: ToolRunner) throws {
         let listed = Self.fittingCatalogue(specs)
@@ -87,7 +88,7 @@ nonisolated struct DynamicToolGateway: Tool {
     static func catalogue(for specs: [ToolSpec]) -> String {
         var text = "Runs one of this device's tools and returns its result. "
         text += ToolPromptFormatter.usageRule
-        text += "\n\nSet \"tool\" to exactly one name from the list below, and \"arguments\" to a JSON object of that tool's parameters — for example {\"expression\": \"12 * 7\"}. Leave \"arguments\" out when the tool takes none. Do not invent a tool that is not listed.\n\n"
+        text += "\n\nAnswer general-knowledge questions yourself. \"What is X\", \"explain Y\" and \"how does Z work\" are answered from what you already know and are never a reason to call a tool. Call one only when the user asks for something you cannot do by writing an answer: search their own past chats, compute a number exactly, convert units, or work on text they gave you.\n\nSet \"tool\" to exactly one name from the list below, and \"arguments\" to a JSON object of that tool's parameters — for example {\"expression\": \"12 * 7\"}. When a tool takes a single value you may pass that value on its own. Do not invent a tool that is not listed.\n\n"
         text += specs.map { line(for: $0) }.joined(separator: "\n")
         return text
     }
@@ -127,10 +128,19 @@ nonisolated struct DynamicToolGateway: Tool {
             // than apologising to the user for a failure it could have fixed itself.
             return "There is no tool called \"\(requested)\". Available tools: \(availableNames)."
         }
-        let json = Self.argumentsJSON(from: fields["arguments"])
+        // A 3B model that gets an error back will cheerfully repeat the identical call until the
+        // turn's budget is gone and then apologise. TestFlight reported exactly that: four failed
+        // chat searches followed by "I apologize for the repeated errors". Two is enough to learn from.
+        guard ledger.failures(of: spec.name) < Self.repeatedFailureLimit else {
+            return "\(spec.name) has already failed \(Self.repeatedFailureLimit) times in this reply. Do not call it again. Answer the user directly with what you already know."
+        }
+        let json = Self.argumentsJSON(from: fields["arguments"], for: spec)
         let result = await runner.run(ToolCallRequest(name: spec.name, argumentsJSON: json))
+        if !result.success { ledger.recordFailure(of: spec.name) }
         return result.text
     }
+
+    static let repeatedFailureLimit = 2
 
     var availableNames: String {
         specs.map(\.name).joined(separator: ", ")
@@ -143,25 +153,56 @@ nonisolated struct DynamicToolGateway: Tool {
         return specs.first { $0.name.caseInsensitiveCompare(requested) == .orderedSame }
     }
 
-    /// The model supplies arguments as a JSON string. It sometimes sends an object instead, and
-    /// sometimes wraps the JSON in a code fence; both are accepted rather than lost.
-    static func argumentsJSON(from value: Any?) -> String {
-        switch value {
-        case let text as String:
-            let cleaned = text
-                .replacingOccurrences(of: "```json", with: "")
-                .replacingOccurrences(of: "```", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !cleaned.isEmpty else { return "{}" }
-            guard let data = cleaned.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return "{}"
-            }
+    /// The model supplies arguments as a JSON string. It sometimes sends an object instead,
+    /// sometimes wraps the JSON in a code fence, and — the case that cost four failed chat
+    /// searches in TestFlight — sometimes sends the bare value with no JSON around it at all.
+    /// A tool with a single required text parameter can take that bare value directly, which turns
+    /// a guaranteed failure into the call the model plainly meant to make.
+    static func argumentsJSON(from value: Any?, for spec: ToolSpec) -> String {
+        if let object = parsedObject(from: value) {
             return AppleDynamicTool.json(from: object)
-        case let object as [String: Any]:
-            return AppleDynamicTool.json(from: object)
-        default:
-            return "{}"
         }
+        let raw = (value as? String).map(cleaned) ?? ""
+        let required = spec.parameters.filter(\.isRequired)
+        if !raw.isEmpty, required.count == 1, required[0].type == .string {
+            return AppleDynamicTool.json(from: [required[0].name: raw])
+        }
+        return "{}"
+    }
+
+    static func cleaned(_ text: String) -> String {
+        text.replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func parsedObject(from value: Any?) -> [String: Any]? {
+        if let object = value as? [String: Any] { return object }
+        guard let text = value as? String else { return nil }
+        let trimmed = cleaned(text)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+}
+
+
+/// Counts, per reply, how often a tool has come back unsuccessful, so the gateway can stop a model
+/// repeating a call that cannot work. One gateway is built per generation, so the tally is
+/// naturally scoped to a single turn.
+final class ToolFailureLedger: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    func recordFailure(of name: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        counts[name, default: 0] += 1
+    }
+
+    func failures(of name: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return counts[name] ?? 0
     }
 }

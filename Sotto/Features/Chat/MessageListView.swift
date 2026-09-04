@@ -76,11 +76,19 @@ struct MessageRow: View {
     @Environment(AppServices.self) private var services
 
     /// A tool call is a mechanism, not part of the answer, so the cards stay out of the way
-    /// unless asked for. A call that *failed* is always shown: it is usually the reason the
-    /// reply that follows is wrong, and hiding it would leave that unexplained.
+    /// unless asked for.
+    ///
+    /// On iOS "off" means off: a phone has no room for a stack of cards above the reply, and a
+    /// failed call there reads as the app breaking rather than as a diagnostic. On the Mac a
+    /// failure is still shown, because there is room for it and it usually explains the answer
+    /// underneath.
     private var visibleToolCalls: [ToolCallRecord] {
         guard !services.settings.showToolCalls else { return message.toolCalls }
+        #if os(iOS)
+        return []
+        #else
         return message.toolCalls.filter { $0.status == .failed }
+        #endif
     }
 
     var body: some View {
