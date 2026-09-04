@@ -134,6 +134,7 @@ enum BuiltInToolID: String, Codable, CaseIterable, Identifiable, Sendable {
     case unitConverter = "convert_units"
     case textStatistics = "text_statistics"
     case searchConversations = "search_conversations"
+    case delegate = "delegate"
 
     // Calendar.
     case dateDifference = "date_difference"
@@ -420,6 +421,18 @@ final class ToolDefinition {
                 search.webSearchConfig = WebSearchConfig()
                 return search
             }(),
+            ToolDefinition(
+                name: BuiltInToolID.delegate.rawValue,
+                displayName: "Delegate a task",
+                summary: "Hands one self-contained task to a second model session and returns only its answer. Use it when a job needs a context window of its own, such as reading a long passage or working through several steps, so the working-out does not fill this chat. Do not call it for anything you can answer yourself, and never pass the user's question on unchanged. It cannot see this chat or ask you anything.",
+                kind: .builtIn,
+                parameters: [ToolParameter(name: "task", type: .string, summary: "The whole job, self-contained")],
+                approval: .askEveryTime,
+                isEnabled: false,
+                isBuiltIn: true,
+                builtIn: .delegate,
+                sortOrder: 5
+            ),
             ToolDefinition(
                 name: BuiltInToolID.searchConversations.rawValue,
                 displayName: "Search my chats",

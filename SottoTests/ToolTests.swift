@@ -922,3 +922,37 @@ struct KeychainStoreTests {
         #expect(cleaned.contains("note number 0"))
     }
 }
+
+@Suite struct SubagentTests {
+    @Test func refusesAnEmptyTaskWithASentence() async {
+        await #expect(throws: ToolExecutionError.self) {
+            _ = try await Subagent.run(task: "   \n ", engine: CannedEngine())
+        }
+    }
+
+    @Test func refusesATaskThatIsReallyTheWholeConversation() async {
+        let huge = String(repeating: "context ", count: 400)
+        #expect(huge.count > Subagent.maximumTaskCharacters)
+        await #expect(throws: ToolExecutionError.self) {
+            _ = try await Subagent.run(task: huge, engine: CannedEngine())
+        }
+    }
+
+    @Test func returnsOnlyTheSubagentsAnswer() async throws {
+        let answer = try await Subagent.run(task: "Say ready.", engine: CannedEngine())
+        #expect(answer == "ready")
+    }
+
+    @Test func instructionsForbidTheThingsASubagentCannotDo() {
+        // It has no one to ask and nowhere to report working-out, so the prompt has to say so.
+        #expect(Subagent.instructions.contains("do not ask questions"))
+        #expect(Subagent.instructions.contains("only its result"))
+    }
+
+    @Test func delegateShipsSwitchedOffAndAsksBeforeRunning() throws {
+        let seed = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .delegate })
+        // It costs a whole extra generation, so it is never on by surprise.
+        #expect(seed.isEnabled == false)
+        #expect(seed.approval == .askEveryTime)
+    }
+}

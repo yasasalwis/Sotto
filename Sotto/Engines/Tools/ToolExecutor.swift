@@ -34,6 +34,10 @@ enum ToolExecutionError: LocalizedError, Equatable {
 struct ToolExecutor {
     let settings: SettingsStore
     let context: ModelContext
+    /// The engine a `delegate` call runs on. Nil where there is no conversation behind the call —
+    /// the tool editor's "Run once", for instance — in which case delegating says so plainly
+    /// rather than failing with something the person cannot act on.
+    var subagentEngine: InferenceEngine?
 
     static let timeout: TimeInterval = 20
 
@@ -66,6 +70,14 @@ struct ToolExecutor {
         switch definition.kind {
         case .builtIn:
             guard let builtIn = definition.builtIn else { throw ToolExecutionError.unknownTool(definition.name) }
+            // Delegating needs a model and is async; every other built-in is a pure function.
+            if builtIn == .delegate {
+                guard let engine = subagentEngine else {
+                    throw ToolExecutionError.notConfigured("a model to delegate to. Try it from a chat")
+                }
+                let task = try ToolArguments.text(arguments, "task")
+                return (try await Subagent.run(task: task, engine: engine), 0)
+            }
             return (try BuiltInTools.run(builtIn, arguments: arguments, context: context), 0)
         case .httpRequest:
             guard let config = definition.httpConfig else { throw ToolExecutionError.invalidURL("") }
@@ -301,6 +313,8 @@ enum BuiltInTools {
         case .unitConverter: return try convertUnits(arguments)
         case .textStatistics: return textStatistics(try ToolArguments.text(arguments, "text"))
         case .searchConversations: return searchConversations(try ToolArguments.text(arguments, "query"), context: context)
+        // Handled by ToolExecutor before it reaches here, because it needs a model and is async.
+        case .delegate: throw ToolExecutionError.notConfigured("a model to delegate to. Try it from a chat")
 
         case .dateDifference: return try DateTools.difference(arguments)
         case .dateShift: return try DateTools.shift(arguments)

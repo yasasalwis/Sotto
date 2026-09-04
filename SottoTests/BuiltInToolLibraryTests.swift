@@ -406,6 +406,7 @@ struct BuiltInToolLibraryTests {
     /// it, so a wiring mistake in the dispatch switch cannot pass unnoticed.
     @Test func everyToolRunsThroughTheExecutor() async throws {
         let arguments: [BuiltInToolID: [String: Any]] = [
+            .delegate: ["task": "Reply with the single word: ready."],
             .currentDateTime: [:],
             .calculator: ["expression": "2+2"],
             .unitConverter: ["value": 5, "from": "km", "to": "mi"],
@@ -437,7 +438,7 @@ struct BuiltInToolLibraryTests {
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
         let store = SettingsStore(defaults: UserDefaults(suiteName: "SottoTests.\(UUID().uuidString)")!)
-        let executor = ToolExecutor(settings: store, context: container.mainContext)
+        let executor = ToolExecutor(settings: store, context: container.mainContext, subagentEngine: CannedEngine())
         let seeds = ToolDefinition.builtInSeeds()
 
         for id in BuiltInToolID.allCases {
@@ -511,6 +512,29 @@ struct BuiltInToolLibraryTests {
             #expect(!tool.hasSideEffects, "\(tool.name) claims to have side effects")
             #expect(!tool.needsSetup, "\(tool.name) needs setup")
             #expect(tool.isUsable == tool.isEnabled, "\(tool.name) is switched on but still unusable")
+        }
+    }
+}
+
+
+/// Stands in for a model so `delegate` can be exercised without Apple Intelligence or a GGUF file.
+/// The library contract is that every declared tool runs; delegating needs an engine to run at all,
+/// so the test supplies one rather than carving out an exception.
+final class CannedEngine: InferenceEngine, @unchecked Sendable {
+    let displayName = "Canned"
+    let contextLength = 4096
+    let countsTokensExactly = false
+
+    func countTokens(_ text: String) async throws -> Int { TokenEstimator.estimate(text) }
+
+    func generate(_ request: GenerationRequest, toolRunner: ToolRunner?) -> AsyncThrowingStream<GenerationEvent, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.delta("ready"))
+            continuation.yield(.finished(GenerationOutcome(
+                promptTokens: 1, generatedTokens: 1, promptSeconds: 0,
+                generationSeconds: 0, totalSeconds: 0, tokensPerSecond: nil, finishReason: .complete
+            )))
+            continuation.finish()
         }
     }
 }

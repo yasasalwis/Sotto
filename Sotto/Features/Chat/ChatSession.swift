@@ -398,7 +398,17 @@ final class ChatSession: ToolRunner {
             updateToolRecord(record)
         }
 
-        let executor = ToolExecutor(settings: services.settings, context: context)
+        // A subagent runs on the same model as the conversation, so delegating never silently
+        // switches to something else.
+        let executor = ToolExecutor(
+            settings: services.settings,
+            context: context,
+            subagentEngine: try? ModelRegistry.engine(
+                for: conversation.modelRef,
+                installed: installedModels,
+                runtime: services.runtime
+            )
+        )
         let result = await executor.execute(definition, arguments: ToolExecutor.decodeArguments(call.argumentsJSON))
         definition.usageCount += 1
         definition.updatedAt = .now
