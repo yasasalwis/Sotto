@@ -60,13 +60,64 @@ enum DeviceCapabilities {
         }
     }
 
+    /// What the Performance page shows next to "Chip".
+    ///
+    /// On the Mac `machdep.cpu.brand_string` is the chip and nothing more is needed. On iOS the
+    /// same sysctl is unavailable and `hw.machine` returns the *device* identifier — an
+    /// iPhone 15 Pro reports `iPhone16,1`. Shown under a "Chip" heading that is wrong twice
+    /// over: it is not a chip, and it reads as the name of a phone the owner does not have. A
+    /// tester reported exactly that ("iPhone model shows incorrect this is a iPhone 15").
+    ///
+    /// So the identifier is translated. An identifier with no entry falls back to itself, which
+    /// is no worse than before and keeps a device released after this build honest rather than
+    /// guessed at.
     static var chipName: String {
         #if os(macOS)
         return sysctlString("machdep.cpu.brand_string") ?? "Apple silicon"
         #else
-        return sysctlString("hw.machine") ?? UIDevice.current.model
+        guard let identifier = sysctlString("hw.machine") else { return UIDevice.current.model }
+        return appleChips[identifier] ?? identifier
         #endif
     }
+
+    #if os(iOS)
+    /// Device identifier to the chip inside it, for everything that runs this app.
+    ///
+    /// The deployment target is iOS 26, which rules out anything older than the A13 devices, so
+    /// the table starts there. Simulators report the host Mac's identifier and fall through to
+    /// the raw string, which is correct — a Simulator has no iPhone chip in it.
+    private static let appleChips: [String: String] = [
+        // iPhone
+        "iPhone12,1": "A13 Bionic", "iPhone12,3": "A13 Bionic", "iPhone12,5": "A13 Bionic",
+        "iPhone12,8": "A13 Bionic",
+        "iPhone13,1": "A14 Bionic", "iPhone13,2": "A14 Bionic", "iPhone13,3": "A14 Bionic",
+        "iPhone13,4": "A14 Bionic",
+        "iPhone14,2": "A15 Bionic", "iPhone14,3": "A15 Bionic", "iPhone14,4": "A15 Bionic",
+        "iPhone14,5": "A15 Bionic", "iPhone14,6": "A15 Bionic", "iPhone14,7": "A15 Bionic",
+        "iPhone14,8": "A15 Bionic",
+        "iPhone15,2": "A16 Bionic", "iPhone15,3": "A16 Bionic",
+        "iPhone15,4": "A16 Bionic", "iPhone15,5": "A16 Bionic",
+        "iPhone16,1": "A17 Pro", "iPhone16,2": "A17 Pro",
+        "iPhone17,1": "A18 Pro", "iPhone17,2": "A18 Pro",
+        "iPhone17,3": "A18", "iPhone17,4": "A18", "iPhone17,5": "A18",
+        "iPhone18,1": "A19 Pro", "iPhone18,2": "A19 Pro", "iPhone18,3": "A19", "iPhone18,4": "A19",
+        // iPad
+        "iPad11,6": "A13 Bionic", "iPad11,7": "A13 Bionic",
+        "iPad12,1": "A13 Bionic", "iPad12,2": "A13 Bionic",
+        "iPad13,1": "M1", "iPad13,2": "M1",
+        "iPad13,4": "M1", "iPad13,5": "M1", "iPad13,6": "M1", "iPad13,7": "M1",
+        "iPad13,8": "M1", "iPad13,9": "M1", "iPad13,10": "M1", "iPad13,11": "M1",
+        "iPad13,16": "M1", "iPad13,17": "M1",
+        "iPad13,18": "A14 Bionic", "iPad13,19": "A14 Bionic",
+        "iPad14,1": "A15 Bionic", "iPad14,2": "A15 Bionic",
+        "iPad14,3": "M2", "iPad14,4": "M2", "iPad14,5": "M2", "iPad14,6": "M2",
+        "iPad14,8": "M2", "iPad14,9": "M2", "iPad14,10": "M2", "iPad14,11": "M2",
+        "iPad15,3": "A16", "iPad15,4": "A16", "iPad15,5": "A16", "iPad15,6": "A16",
+        "iPad15,7": "A17 Pro", "iPad15,8": "A17 Pro",
+        "iPad16,1": "A17 Pro", "iPad16,2": "A17 Pro",
+        "iPad16,3": "M4", "iPad16,4": "M4", "iPad16,5": "M4", "iPad16,6": "M4",
+    ]
+    #endif
 
     static var isSimulator: Bool {
         #if targetEnvironment(simulator)

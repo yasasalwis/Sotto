@@ -83,7 +83,7 @@ struct ComposerView: View {
             Divider()
             Button("Edit presets…") { openWindow(id: WindowID.personas) }
         } label: {
-            Text("persona: \(session.persona?.name.lowercased() ?? "default")")
+            Text("persona: \(session.persona?.name.lowercased() ?? "none")")
         }
         .buttonStyle(ChipButtonStyle(active: session.persona != nil))
         .menuIndicator(.hidden)
@@ -100,7 +100,7 @@ struct ComposerView: View {
             attachmentChips
             if !session.conversation.isEmpty || session.persona != nil {
                 HStack(spacing: 8) {
-                    Button("persona: \(session.persona?.name.lowercased() ?? "default")") {
+                    Button("persona: \(session.persona?.name.lowercased() ?? "none")") {
                         services.state.sheet = .personaPicker
                     }
                     .buttonStyle(ChipButtonStyle(active: session.persona != nil, size: 10))

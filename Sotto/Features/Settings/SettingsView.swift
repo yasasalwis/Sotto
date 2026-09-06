@@ -162,7 +162,20 @@ struct SettingsRow<Accessory: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            accessory
+            // The text column asks for every point it can get, and on a Mac there are enough to
+            // go round. On a 402pt iPhone there are not, and the control was left with whatever
+            // remained: "Apple Intelligence" wrapped to two lines beside a vertically centred
+            // chevron, and the "Manage…" button broke mid-word into "Manag e…". Sizing the
+            // control first and letting the description wrap instead is the right way round —
+            // a description is written to wrap, a control is not.
+            //
+            // `fixedSize` rather than `layoutPriority`: `SottoToggleStyle` puts a `Spacer` beside
+            // its capsule so the control sits at the trailing edge when it has a visible label,
+            // which makes it greedy. Given priority it swallowed the whole row and left the title
+            // and detail at zero width — rows that looked, on screen, as though they had simply
+            // gone. Asking for the ideal width instead prices that `Spacer` at nothing and gets
+            // the capsule's own 44pt.
+            accessory.fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
@@ -231,7 +244,17 @@ struct GeneralPane: View {
                 #endif
                 SettingsRow(title: "Let models call tools", detail: "Tools run on this device unless you add one that makes an HTTPS request. Each tool can ask before it runs.") {
                     HStack(spacing: 10) {
+                        #if os(macOS)
                         Button("Manage…") { openTools() }.buttonStyle(SecondaryButtonStyle())
+                        #else
+                        // Pushed, not presented. Settings is itself a sheet on iOS, and there is
+                        // one sheet for the whole app: setting `state.sheet = .tools` from in here
+                        // swapped the item underneath an open sheet, so SwiftUI tore Settings down
+                        // and built Tools in its place — a visible stall, and the way back was to
+                        // the chat rather than to Settings.
+                        NavigationLink("Manage…") { ToolsView(showsCloseButton: false) }
+                            .buttonStyle(SecondaryButtonStyle())
+                        #endif
                         Toggle("", isOn: $settings.toolsEnabled).toggleStyle(SottoToggleStyle()).labelsHidden()
                     }
                 }

@@ -561,6 +561,52 @@ construction and the tag stripping is engine-level. Whether to push the same bui
 well is a judgement call: it would lose macOS its place in the queue for a fix that only shows on
 iOS. Leaving it is defensible; if macOS is rejected for anything else, roll the fixes in then.
 
+### Third round of TestFlight fixes, on build 1.0 (13)
+
+Build 13 went to the phone for the App Review recording and came back with five reports before a
+frame was shot. All five were real; none would have been found by reading the code, and two would
+have been in front of a reviewer.
+
+- **A tool call rendered as a code block, and the answer never arrived.** On Gemma 2 2B, "Hello"
+  produced nothing but ```` ```tool_call ````, the JSON, and `</tool_call>`. The prompt asks for a
+  `<tool_call>` block; a model with no such token in its vocabulary reaches for the nearest thing
+  it knows, a fenced code block with `tool_call` as the language. `ToolCallScanner` recognised only
+  the literal tag, so the whole call was passed through as prose and `current_datetime` — a real
+  Sotto tool, correctly named — never ran. The scanner now takes the fence as an opening marker,
+  accepts either `</tool_call>` or the closing fence as its terminator, and drops a stray closing
+  tag left behind when the bare-JSON path recovers a call on its own.
+- **Settings rows starved their controls.** `SettingsRow` gave the title-and-detail column
+  `maxWidth: .infinity`, which is free on a Mac and is not on a 402pt phone: "Apple Intelligence"
+  wrapped to two lines beside a vertically centred chevron, and the "Manage…" button broke
+  mid-word into "Manag e…". The control is now sized first and the description wraps instead.
+  **`fixedSize`, not `layoutPriority`** — `SottoToggleStyle` carries a `Spacer` so the capsule sits
+  at the trailing edge when it has a visible label, which makes it greedy; given priority it took
+  the whole row and left four rows looking as though they had vanished. Asking for the ideal width
+  prices that `Spacer` at nothing.
+- **"Chip" showed a device identifier on iOS.** `machdep.cpu.brand_string` is a Mac sysctl; iOS
+  fell back to `hw.machine`, which is the device, so an iPhone 15 Pro read `iPhone16,1` under a
+  heading that was wrong twice over. `DeviceCapabilities.appleChips` translates it, falling back to
+  the raw identifier for anything newer than this build.
+- **Settings › General › Manage swapped the sheet.** There is one `.sheet` for the whole app, on
+  `MainView`. Setting `state.sheet = .tools` from inside the Settings sheet changed the item
+  underneath an open sheet, so SwiftUI tore Settings down and built Tools in its place — the stall
+  reported as "app stuck when close the general for few seconds", and the way back led to the chat
+  rather than to Settings. On iOS it is now a `NavigationLink` pushing `ToolsView(showsCloseButton:
+  false)` onto the stack Settings already has. Same family as the onboarding importer: **on iOS,
+  ask what is already presented before presenting anything.**
+- **"persona: default" was read as "the default persona".** The composer chip fell back to
+  "default" when a conversation had no persona — beside a setting called *Default persona*, that
+  reads as confirmation rather than absence. It says "none" now. The setting itself was never
+  broken: a new chat does take `defaultPersonaID`, verified on the Simulator. What it does not do
+  is reach back into a chat that is already open, which is the chat you are looking at when you
+  close Settings.
+
+The sidebar's full-width "＋ New chat" card is also gone on iOS, replaced by a "Chats" header with
+a compact circular button. The Mac keeps the wide row, where the width is free and the ⌘N hint has
+somewhere to sit.
+
+macOS 219 tests, iOS 216, all green.
+
 ### Second round of TestFlight fixes
 
 Build 1.0 (5) came back with "Continues asking for chat history and apologize": "what is a LLM"

@@ -28,10 +28,17 @@ struct SidebarView: View {
             #if os(macOS)
             Color.clear.frame(height: 42)
             #endif
+            #if os(macOS)
             newChatButton
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
+            #else
+            compactHeader
+                .padding(.horizontal, 18)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+            #endif
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(grouped, id: \.0) { group, items in
@@ -76,6 +83,35 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) { renaming = nil }
         }
     }
+
+    #if os(iOS)
+    /// The phone's sidebar hides its navigation bar, so this is the header: a title and a compact
+    /// button. The Mac keeps the wide row, where the width is free and the ⌘N hint has somewhere
+    /// to sit; on a phone that row was a full-width card doing the work of an icon.
+    private var compactHeader: some View {
+        HStack(spacing: 12) {
+            Text("Chats")
+                .font(Theme.Fonts.sans(22, weight: .medium))
+                .tracking(-0.4)
+                .foregroundStyle(Theme.Colors.ink)
+            Spacer()
+            Button {
+                services.state.newChatRequests += 1
+                compactColumn = .detail
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Colors.ink)
+                    .frame(width: 34, height: 34)
+                    .background(Theme.Colors.surface, in: Circle())
+                    .overlay(Circle().stroke(Theme.Colors.borderMedium, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New chat")
+            .accessibilityIdentifier("sidebar.newChat")
+        }
+    }
+    #endif
 
     private var newChatButton: some View {
         Button {

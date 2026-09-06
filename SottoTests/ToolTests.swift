@@ -241,6 +241,57 @@ struct ToolCallScannerTests {
         #expect(scanner.feed("The time is 18:20.</tool_response>").visible == "The time is 18:20.")
     }
 
+    // MARK: - Calls written as a Markdown fence
+
+    /// Verbatim from an iPhone running Gemma 2 2B: the whole reply was the call, written as a
+    /// fenced block, and it was rendered as a code block instead of being run.
+    @Test func recognisesACallWrittenAsAFencedBlock() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("```tool_call\n{\"name\": \"current_datetime\", \"arguments\": {}}\n</tool_call>")
+        #expect(output.call?.name == "current_datetime")
+        #expect(output.visible.isEmpty)
+        #expect(output.unparsedBlock == nil)
+    }
+
+    /// A model that opens with a fence may close with one too.
+    @Test func aFencedCallMayCloseWithAFence() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("```tool_call\n{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\"}}\n```")
+        #expect(output.call?.name == "calculate")
+        #expect(output.visible.isEmpty)
+    }
+
+    @Test func aFencedCallArrivingInPiecesIsHeldBack() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("Sure. ```tool").visible == "Sure. ")
+        #expect(scanner.feed("_call\n{\"name\":\"current_datetime\"").visible.isEmpty)
+        let final = scanner.feed(",\"arguments\":{}}\n</tool_call>")
+        #expect(final.call?.name == "current_datetime")
+    }
+
+    /// An ordinary code block must survive untouched — the fence is only a marker when the
+    /// language is `tool_call`.
+    @Test func anOrdinaryCodeFenceIsNotACall() {
+        var scanner = ToolCallScanner()
+        _ = scanner.feed("Here:\n```swift\nlet x = 1\n")
+        let output = scanner.feed("```\n")
+        let all = output.visible
+        #expect(!all.contains("tool_call"))
+        var whole = ToolCallScanner()
+        let single = whole.feed("Here:\n```swift\nlet x = 1\n```\n")
+        #expect(single.call == nil)
+        #expect(single.visible.contains("let x = 1"))
+    }
+
+    /// The bare-JSON path recovers a call whose opener was a stripped special token, and the
+    /// closing tag it leaves behind must not reach the transcript.
+    @Test func aStrayClosingCallTagIsDropped() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("Done.</tool_call> Anything else?")
+        #expect(output.visible == "Done. Anything else?")
+        #expect(output.call == nil)
+    }
+
     // MARK: - Snapshot stripping, for Apple's growing-snapshot stream
 
     @Test func stripsAnEchoFromASnapshot() {

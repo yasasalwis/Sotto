@@ -6,6 +6,10 @@ import Foundation
 enum ToolPromptFormatter {
     static let openTag = "<tool_call>"
     static let closeTag = "</tool_call>"
+    /// The Markdown-fence spelling of `openTag`, which models without a `<tool_call>` token in
+    /// their vocabulary write instead. Recognised on the way in, never produced by Sotto.
+    static let fencedOpenTag = "```tool_call"
+    static let fence = "```"
     static let responseOpenTag = "<tool_response>"
     static let responseCloseTag = "</tool_response>"
 
@@ -121,6 +125,18 @@ struct ToolCallScanner {
     /// A protocol tag found in text mode, and where it sits.
     private enum Marker {
         case call
+        /// ```` ```tool_call ```` — the same call written as a Markdown fence.
+        ///
+        /// The prompt asks for a `<tool_call>` block, and a model that has no such token in its
+        /// vocabulary reaches for the nearest thing it does know: a fenced code block with
+        /// `tool_call` as the language. Gemma 2 2B did exactly that on an iPhone, and because
+        /// nothing recognised the fence the whole call — JSON, closing tag and all — was rendered
+        /// as a code block and no tool ever ran. From the outside that is an answer that never
+        /// arrived.
+        case callFence
+        /// A closing call tag with no opener, left over when the opener was a stripped special
+        /// token and the JSON was recovered on its own.
+        case callClose
         case responseOpen
         /// A closing response tag with no opener — dropped on its own so it cannot dangle.
         case responseClose
@@ -128,17 +144,22 @@ struct ToolCallScanner {
         var tag: String {
             switch self {
             case .call: return ToolPromptFormatter.openTag
+            case .callFence: return ToolPromptFormatter.fencedOpenTag
+            case .callClose: return ToolPromptFormatter.closeTag
             case .responseOpen: return ToolPromptFormatter.responseOpenTag
             case .responseClose: return ToolPromptFormatter.responseCloseTag
             }
         }
 
-        static let all: [Marker] = [.call, .responseOpen, .responseClose]
+        static let all: [Marker] = [.call, .callFence, .callClose, .responseOpen, .responseClose]
     }
 
     private var pending = ""
     private var block = ""
     private var mode = Mode.text
+    /// What ends the block currently being collected. A tagged call ends at `</tool_call>`; a
+    /// fenced one ends at either that or the closing fence, whichever the model wrote.
+    private var closers: [String] = [ToolPromptFormatter.closeTag]
     private var emittedVisibleText = false
     private var json = JSONObjectScanner()
 
@@ -157,7 +178,7 @@ struct ToolCallScanner {
         while true {
             switch mode {
             case .tagged:
-                if let close = pending.range(of: ToolPromptFormatter.closeTag) {
+                if let close = Self.firstRange(of: closers, in: pending) {
                     block += String(pending[..<close.upperBound])
                     pending = String(pending[close.upperBound...])
                     mode = .text
@@ -170,7 +191,7 @@ struct ToolCallScanner {
                     }
                     return output
                 }
-                let keep = Self.partialSuffixLength(of: pending, matching: ToolPromptFormatter.closeTag)
+                let keep = closers.map { Self.partialSuffixLength(of: pending, matching: $0) }.max() ?? 0
                 let cut = pending.index(pending.endIndex, offsetBy: -keep)
                 block += String(pending[..<cut])
                 pending = String(pending[cut...])
@@ -214,11 +235,19 @@ struct ToolCallScanner {
                     switch marker.kind {
                     case .call:
                         block = ToolPromptFormatter.openTag
+                        closers = [ToolPromptFormatter.closeTag]
                         mode = .tagged
+                    case .callFence:
+                        // Normalised to the tag the parser expects. A fenced call may be closed
+                        // either way — `</tool_call>` because the prompt asked for it, or the
+                        // fence because that is how the model opened it — so accept both.
+                        block = ToolPromptFormatter.openTag
+                        closers = [ToolPromptFormatter.closeTag, ToolPromptFormatter.fence]
+                        mode = .tagged
+                    case .callClose, .responseClose:
+                        break
                     case .responseOpen:
                         mode = .responseEcho
-                    case .responseClose:
-                        break
                     }
                     continue
                 }
@@ -299,10 +328,22 @@ struct ToolCallScanner {
 
     /// The first protocol tag in `text`, if any — earliest position wins, so a `<tool_response>`
     /// that opens before a stray `</tool_response>` is treated as a block rather than a stray.
+    ///
+    /// Ties go to the longest tag, which is what keeps ```` ```tool_call ```` from being read as a
+    /// bare fence and `<tool_call>` from being read as a stray closer.
     private static func firstMarker(in text: String) -> (kind: Marker, range: Range<String.Index>)? {
         Marker.all
             .compactMap { marker in text.range(of: marker.tag).map { (kind: marker, range: $0) } }
-            .min { $0.range.lowerBound < $1.range.lowerBound }
+            .min {
+                $0.range.lowerBound == $1.range.lowerBound
+                    ? $0.kind.tag.count > $1.kind.tag.count
+                    : $0.range.lowerBound < $1.range.lowerBound
+            }
+    }
+
+    /// The earliest occurrence of any of `tags` in `text`.
+    private static func firstRange(of tags: [String], in text: String) -> Range<String.Index>? {
+        tags.compactMap { text.range(of: $0) }.min { $0.lowerBound < $1.lowerBound }
     }
 
     /// How much of the tail to keep unpublished because it could still grow into any protocol

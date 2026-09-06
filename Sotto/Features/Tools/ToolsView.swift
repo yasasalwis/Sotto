@@ -3,6 +3,10 @@ import SwiftData
 import SwiftUI
 
 struct ToolsView: View {
+    /// False when this is pushed onto another stack rather than presented as its own sheet —
+    /// Settings › General › Manage does that, and a pushed page already has a back button.
+    var showsCloseButton = true
+
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -156,8 +160,10 @@ struct ToolsView: View {
         .navigationTitle("Tools")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Close") { dismiss() }.foregroundStyle(Theme.Colors.textSecondary)
+            if showsCloseButton {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }.foregroundStyle(Theme.Colors.textSecondary)
+                }
             }
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 2) {
