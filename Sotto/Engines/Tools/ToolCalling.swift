@@ -95,6 +95,13 @@ enum ToolCallParser {
 /// Models whose vocabulary holds `<tool_call>` as a special token (Qwen, among others) have those
 /// tokens stripped before the text reaches us, so a reply that is nothing but a JSON object with a
 /// `name` and `arguments` is treated as a call too.
+///
+/// `<tool_response>` is stripped as well. The system prompt tells the model its results arrive
+/// inside those tags and `GGUFEngine` feeds them back that way, so a small model readily writes
+/// the wrapper itself — sometimes replaying a whole exchange it invented. Nothing inside it is
+/// worth showing: a genuine result is already rendered as a tool card above the answer, and an
+/// invented one is a hallucination wearing a protocol tag. Left unhandled it reached the
+/// transcript verbatim, which is how `<tool_response>date</tool_response>` turned up in a chat.
 struct ToolCallScanner {
     private let tools: [ToolSpec]
 
@@ -106,6 +113,27 @@ struct ToolCallScanner {
         case text
         case tagged
         case bareJSON
+        /// Inside a `<tool_response>` the model wrote itself; everything up to the closing tag
+        /// is dropped.
+        case responseEcho
+    }
+
+    /// A protocol tag found in text mode, and where it sits.
+    private enum Marker {
+        case call
+        case responseOpen
+        /// A closing response tag with no opener — dropped on its own so it cannot dangle.
+        case responseClose
+
+        var tag: String {
+            switch self {
+            case .call: return ToolPromptFormatter.openTag
+            case .responseOpen: return ToolPromptFormatter.responseOpenTag
+            case .responseClose: return ToolPromptFormatter.responseCloseTag
+            }
+        }
+
+        static let all: [Marker] = [.call, .responseOpen, .responseClose]
     }
 
     private var pending = ""
@@ -166,14 +194,32 @@ struct ToolCallScanner {
                 }
                 continue
 
+            case .responseEcho:
+                if let close = pending.range(of: ToolPromptFormatter.responseCloseTag) {
+                    pending = String(pending[close.upperBound...])
+                    mode = .text
+                    continue
+                }
+                // Hold back only what could still become the closing tag; drop the rest.
+                let keptTail = Self.partialSuffixLength(of: pending, matching: ToolPromptFormatter.responseCloseTag)
+                pending = String(pending.suffix(keptTail))
+                return output
+
             case .text:
-                if let open = pending.range(of: ToolPromptFormatter.openTag) {
-                    let leading = String(pending[..<open.lowerBound])
+                if let marker = Self.firstMarker(in: pending) {
+                    let leading = String(pending[..<marker.range.lowerBound])
                     output.visible += leading
                     if !leading.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { emittedVisibleText = true }
-                    pending = String(pending[open.upperBound...])
-                    block = ToolPromptFormatter.openTag
-                    mode = .tagged
+                    pending = String(pending[marker.range.upperBound...])
+                    switch marker.kind {
+                    case .call:
+                        block = ToolPromptFormatter.openTag
+                        mode = .tagged
+                    case .responseOpen:
+                        mode = .responseEcho
+                    case .responseClose:
+                        break
+                    }
                     continue
                 }
                 // A reply that opens with a JSON object may be a call whose tags were stripped.
@@ -186,7 +232,7 @@ struct ToolCallScanner {
                     mode = .bareJSON
                     continue
                 }
-                let keep = Self.partialSuffixLength(of: pending, matching: ToolPromptFormatter.openTag)
+                let keep = Self.heldBackSuffixLength(of: pending)
                 let cut = pending.index(pending.endIndex, offsetBy: -keep)
                 let ready = String(pending[..<cut])
                 output.visible += ready
@@ -211,6 +257,10 @@ struct ToolCallScanner {
             } else {
                 output.visible = text
             }
+        case .responseEcho:
+            // An unterminated echo is still an echo: dropping it beats ending a reply on a
+            // half-written protocol tag.
+            break
         case .text:
             output.visible = pending
         }
@@ -219,6 +269,47 @@ struct ToolCallScanner {
         json = JSONObjectScanner()
         mode = .text
         return output
+    }
+
+    /// Removes `<tool_response>` blocks from a finished or cumulative string.
+    ///
+    /// The streaming path above is for engines that hand over one delta at a time. Apple's
+    /// `LanguageModelSession` instead yields a growing snapshot of the whole answer, so it needs
+    /// a plain function over that snapshot. It calls tools natively and is never shown these
+    /// tags, but a 3B model can still write the convention it met in pretraining, and nothing
+    /// between the session and the transcript was looking.
+    ///
+    /// An unterminated block drops everything after it: mid-stream that text is the inside of the
+    /// echo, and the snapshot that completes the tag replaces this one anyway.
+    static func strippingEchoedResponses(_ text: String) -> String {
+        guard text.contains(ToolPromptFormatter.responseOpenTag) || text.contains(ToolPromptFormatter.responseCloseTag) else {
+            return text
+        }
+        var result = ""
+        var rest = Substring(text)
+        while let open = rest.range(of: ToolPromptFormatter.responseOpenTag) {
+            result += rest[..<open.lowerBound]
+            let after = rest[open.upperBound...]
+            guard let close = after.range(of: ToolPromptFormatter.responseCloseTag) else { return result }
+            rest = after[close.upperBound...]
+        }
+        result += rest
+        return result.replacingOccurrences(of: ToolPromptFormatter.responseCloseTag, with: "")
+    }
+
+    /// The first protocol tag in `text`, if any — earliest position wins, so a `<tool_response>`
+    /// that opens before a stray `</tool_response>` is treated as a block rather than a stray.
+    private static func firstMarker(in text: String) -> (kind: Marker, range: Range<String.Index>)? {
+        Marker.all
+            .compactMap { marker in text.range(of: marker.tag).map { (kind: marker, range: $0) } }
+            .min { $0.range.lowerBound < $1.range.lowerBound }
+    }
+
+    /// How much of the tail to keep unpublished because it could still grow into any protocol
+    /// tag. `<tool_` is the shared prefix of a call and a response, so holding back only what
+    /// `<tool_call>` needs would let `<tool_response>` slip out one character at a time.
+    static func heldBackSuffixLength(of text: String) -> Int {
+        Marker.all.map { partialSuffixLength(of: text, matching: $0.tag) }.max() ?? 0
     }
 
     /// Length of the longest suffix of `text` that is also a proper prefix of `tag`.

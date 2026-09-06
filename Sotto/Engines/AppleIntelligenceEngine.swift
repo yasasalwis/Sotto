@@ -164,7 +164,11 @@ final class AppleIntelligenceEngine: InferenceEngine {
                     let stream = session.streamResponse(to: last.content, options: options)
                     for try await snapshot in stream {
                         try Task.checkCancellation()
-                        let content = snapshot.content
+                        // The session calls tools itself, so nothing here should carry protocol
+                        // markup — but a model that wrote `<tool_response>` anyway used to have it
+                        // land in the transcript verbatim. A snapshot that shrinks when a tag
+                        // closes simply fails the prefix check below and is sent as a replacement.
+                        let content = ToolCallScanner.strippingEchoedResponses(snapshot.content)
                         if firstToken == nil { firstToken = clock.now }
                         if content.hasPrefix(previous) {
                             let delta = String(content.dropFirst(previous.count))

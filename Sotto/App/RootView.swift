@@ -56,9 +56,19 @@ struct RootView: View {
             #endif
             await services.refreshCatalogIfDue()
         }
+        // macOS only, and deliberately so. `isImportingModel` is set from the Models menu
+        // (⇧⌘I) and Settings › Models, both of which are `#if os(macOS)`, so on iOS this
+        // importer could never fire — but it was not free. On iOS `.fileImporter` presents a
+        // sheet, and two of them in one ancestor→descendant chain do not both work: this one
+        // claimed the slot and `OnboardingView`'s own importer, a direct descendant, silently
+        // did nothing. "Import a model instead" on the welcome screen was dead as a result.
+        // Model Library's importer was unaffected because it lives inside a presented sheet,
+        // which is its own presentation context.
+        #if os(macOS)
         .fileImporter(isPresented: $state.isImportingModel, allowedContentTypes: [.gguf, .data], allowsMultipleSelection: false) { result in
             handleImport(result)
         }
+        #endif
         .onOpenURL { url in
             handleOpenURL(url)
         }

@@ -57,6 +57,15 @@ Never add it to a build destined for App Store Connect.
       Run the whole scheme, not `-only-testing:SottoTests`. `SottoUITests` covers the sandboxed
       export, and CI cannot: it builds with `CODE_SIGNING_ALLOWED=NO`, so no entitlements are
       applied and a sandbox fault is invisible there.
+      > Those three UI tests were failing for a while, and it was not the app. The main
+      > `WindowGroup` carries `.handlesExternalEvents(matching: ["*"])`, so SwiftUI waits for an
+      > external event before making a window; XCUITest execs the binary and sends none, so the app
+      > came up with a menu bar and nothing else. Finder, the Dock, Spotlight and `open` all send
+      > that event, so no launch a user or a reviewer can perform is affected — proved by
+      > `open -n Sotto.app` giving a window and `./Sotto.app/Contents/MacOS/Sotto` giving none.
+      > `SottoMacAppDelegate` now re-opens its own bundle when launched with `-uiTesting YES`,
+      > which the tests pass; the whole thing is inside `#if DEBUG`, so Release is untouched. If
+      > these three start timing out again, check that argument before suspecting the app.
 - [ ] `xcodebuild -project Sotto.xcodeproj -scheme Sotto -destination 'platform=iOS Simulator,name=iPhone 17' test` is green.
 - [ ] `cd Packages/LlamaKit && swift test` is green.
 - [ ] Product › Archive for iOS, then for macOS. Archive from the **Release** configuration —
@@ -148,10 +157,18 @@ be. Do not add weights to the app bundle.
 
 ## 4. Review notes — the answer to the Guideline 2.1 information request
 
-macOS 1.0 was rejected on 4 September 2026 under **Guideline 2.1 — Information Needed (New App
-Submission)**. It is not a bug report: Apple asks every developer account with a limited review
-history for a screen recording plus five written answers, and asks that the written answers also
-live in the Notes field for future submissions.
+macOS 1.0 was rejected on 4 September 2026, and **iOS 1.0 on 6 September 2026**, both under
+**Guideline 2.1 — Information Needed (New App Submission)**, with the same template. It is not a
+bug report: Apple asks every developer account with a limited review history for a screen
+recording plus five written answers, and asks that the written answers also live in the Notes
+field for future submissions.
+
+> **The Notes field alone does not clear a 2.1 request.** iOS carried the answers below in its
+> Notes field from 4 September and was rejected anyway. Item 1 — a recording made on a physical
+> device, attached to the Resolution Center reply — is the item that closes it, and there is no
+> field in App Store Connect that can stand in for it. See
+> [Item 1 — the screen recording](#item-1--the-screen-recording) and, for iOS,
+> [The iOS answer, 6 September 2026](#the-ios-answer-6-september-2026).
 
 The Notes field caps at **4,000 characters**, so the notes were rewritten to answer Apple's
 questions in Apple's own numbering rather than to describe the app freely. Both platforms are
@@ -286,6 +303,146 @@ was made, because the same recipe is what makes it safe to repeat:
   (`fps=1/9,scale=600:-1,tile=3x3`) catches a stale error banner, a stalled answer or a leaked
   window in one look.
 
+### The iOS answer, 6 September 2026
+
+iOS 1.0 came back on 6 September under the same 2.1 template, on build 1.0 (11), with the answers
+already sitting in its Notes field. Nothing in the notes was wrong; the request was for the
+recording, which no field can hold. Two things go back this time: the recording, and a build with
+two real defects fixed.
+
+**The defects, both found by driving the app rather than by reading it.** Neither shows up in a
+unit test, and either one could have turned an information request into a bugs-and-crashes
+rejection.
+
+1. **"Import a model instead" on the welcome screen did nothing on iOS.** `RootView` carried a
+   `.fileImporter` for `state.isImportingModel`, and `OnboardingView`, a direct descendant,
+   carried its own. On iOS a `.fileImporter` is a sheet presentation, and two of them in one
+   ancestor→descendant chain do not both work — the outer claimed the slot and the inner never
+   presented. The root importer was dead weight there anyway: both of its triggers, the Models
+   menu (⇧⌘I) and Settings › Models, are `#if os(macOS)`. It is now macOS-only. Model Library's
+   importer was never affected, because it lives inside a presented sheet, which is its own
+   presentation context — and that difference is what identified the cause.
+2. **Raw `<tool_response>` markup reached the transcript.** The GGUF system prompt tells the model
+   its results come back inside those tags, and `GGUFEngine` feeds them that way, so a small model
+   writes the wrapper itself. `ToolCallScanner` stripped `<tool_call>` and nothing else, so the
+   echo streamed straight through. It now swallows `<tool_response>` blocks, a stray closing tag,
+   and holds back a partial tag across chunks (`<tool_` is the shared prefix of both, so a
+   hold-back sized for `<tool_call>` alone leaked the other one a chunk at a time). Apple's engine
+   got the same treatment through `ToolCallScanner.strippingEchoedResponses`: it calls tools
+   natively and is never shown these tags, but it streams a growing snapshot straight to the
+   transcript with nothing in between, and a 3B model can still write a convention it met in
+   pretraining. Twelve tests cover both shapes.
+
+Verified in the running app on an iPhone 17 simulator, iOS 26.5: the welcome-screen button opens
+the Files picker, a picked file imports (a deliberately malformed one raises "…is not a readable
+GGUF file" in onboarding's own alert, which proves the whole presentation chain works); Apple
+Intelligence answered "What time is it right now?" through the date tool in 3.2 s at 63 tok/s;
+Qwen2.5 0.5B downloaded from the catalogue (397,808,192 bytes, matching the manifest), loaded, and
+answered through the same tool in 5.2 s at 75 tok/s — no protocol markup in either transcript.
+
+**Navigation on iOS is not the Mac's, and the notes must say so.** There are no keyboard
+shortcuts. The **⋯ button at the top right of a chat** is the way in to Change model, Persona,
+Compare two models, New chat, Model library, Personas, Tools and Settings; the **☰ button at the
+top left** opens the chat list, which itself carries Model library and Settings at its foot. The
+earlier iOS notes inherited "(⇧⌘L)", "(⇧⌘P)", "(⇧⌘K)" and "(⇧⌘T)" from the Mac copy — the same
+class of mistake as the welcome-button wording above, and it sends a reviewer looking for
+something that is not there.
+
+#### iOS Notes field (3730 of 4,000 characters)
+
+> Sotto is a free, offline-first AI chat app. No account, no server, no analytics, no ads and no in-app purchase of any kind. Answers to the Guideline 2.1 questions follow, numbered as asked.
+>
+> 2. PURPOSE AND AUDIENCE
+> Sotto runs a language model entirely on the device: ask questions, draft and rewrite text, summarise documents, get help with code. Mainstream AI chat apps send every message to a company's server; Sotto sends nothing. Inference happens on this iPhone, so it works in Airplane Mode and a conversation never leaves the device. For privacy-conscious general users, students, writers, developers, and anyone handling confidential material. Rated 18+ because model output is unfiltered.
+>
+> 3. SETTING UP AND REACHING THE MAIN FEATURES
+> No sign-in, no credentials, no sample files needed. Sotto uses either Apple's on-device model or an open-source model downloaded in the app.
+> - The welcome screen's main button always reads "Start chatting". Tap it, type a message, send. With Apple Intelligence on, it answers on-device with no download and no network.
+> - If Apple Intelligence is unavailable, the "Apple Intelligence" card on the welcome screen says why. Tap Start chatting, then the ... button at the top right of the chat > Model library > + > Browse catalog > "Qwen2.5 0.5B Instruct" (398 MB, first in the list, about a minute) > Download. Then ... > Change model... > Qwen2.5 0.5B Instruct.
+> Everything after that download works in Airplane Mode.
+>
+> That same ... button opens Personas, Tools, Compare two models, Model library and Settings; the menu button at the top left opens the chat list. Settings > Privacy shows a live count of the bytes the app has sent.
+>
+> 4. EXTERNAL SERVICES
+> None for core functionality. Inference is Apple's FoundationModels framework plus the bundled llama.cpp library, both on-device. There is no authentication service, payment processor, analytics SDK, ad network or third-party AI API. The only outbound requests are:
+> - huggingface.co - a model download the person starts, and an optional weekly catalogue check that is off by default. Downloads are restricted in code to https://huggingface.co.
+> - googleapis.com/customsearch/v1 - an optional Google Programmable Search tool, inert until the person supplies their own API key.
+> - a URL the person writes themselves in the optional HTTPS-request tool.
+> A downloaded .gguf file is model weights read as data by llama.cpp. Nothing downloaded is executed and the app's functionality does not change (guideline 2.5.2).
+>
+> 5. REGIONAL DIFFERENCES
+> None. The same features and content ship in all 175 regions - no geo-gating, no regional pricing, no region-specific content, and no server that could vary by region. The one variation is Apple's own: where Apple Intelligence is unavailable, the welcome screen says so and the person downloads a model instead.
+>
+> 6. REGULATED INDUSTRY AND THIRD-PARTY MATERIAL
+> Sotto is not in a regulated industry and offers no medical, legal or financial advice. It bundles and redistributes no model weights. The in-app catalogue links to each publisher's own files on Hugging Face and shows the publisher and licence for every entry (Apache-2.0, MIT, Llama 3.2 Community License, Gemma Terms of Use, Qwen Research License). The bundled llama.cpp inference library is MIT-licensed and is named in Settings > About.
+>
+> GENERATED TEXT
+> Sotto does not filter or fact-check what a model produces, and says so on the welcome screen, on the empty chat screen and in Settings > About. The age rating reflects it. No content is shared between users, so there is nothing to report or block.
+>
+> Privacy policy: https://sotto.eonix.lk/privacy
+> Support: https://sotto.eonix.lk/support
+> Source code: https://github.com/yasasalwis/Sotto
+
+#### iOS Resolution Center reply (3977 of 4,000 characters)
+
+Attach the iPhone recording to this. It claims a build with both fixes in it, so send it only
+against that build.
+
+> Thank you for the review. The recording is attached and the answers follow, numbered as asked; they are also in the App Review Information notes now.
+>
+> Our testing on a physical iPhone since the last build found two defects, both fixed in the build attached here: "Import a model instead" on the welcome screen did not open the file picker, and a model could print raw <tool_response> markup into a reply.
+>
+> 1. SCREEN RECORDING
+> Attached, captured on a physical iPhone running the current public iOS release. It begins by launching the app from the Home Screen, then follows the typical flow: welcome screen, first message answered on-device, model library and catalogue, personas, tools, privacy page. The three cases you list do not apply, but rather than leave them unanswered:
+> - Registration, login, deletion: Sotto has no accounts - no sign-up, sign-in, profile or server - so there is nothing to register, log into or delete.
+> - User-generated content: nothing written is uploaded, published or visible to anyone else; conversations stay in the app's container on the device. No content reaches another user, so there is nothing to report or block.
+> - Paid content: the app is free in full - no in-app purchases, subscription, ads or paid tier.
+>
+> 2. PURPOSE AND AUDIENCE
+> Sotto runs a language model entirely on the device: ask questions, draft and rewrite text, summarise documents, get help with code. Other AI chat apps send every message to a server; Sotto sends nothing. Inference happens on the iPhone, so it works in Airplane Mode and a conversation never leaves the device. For privacy-conscious general users, students, writers, developers, and anyone handling confidential material. Rated 18+ because model output is unfiltered.
+>
+> 3. SETTING UP AND REACHING THE MAIN FEATURES
+> No sign-in, credentials or sample files are needed. The welcome screen's main button reads "Start chatting": tap it, type a message, send. With Apple Intelligence on, it answers on-device with no download and no network. If Apple Intelligence is unavailable the welcome screen says why; tap Start chatting, then the "..." button at the top right of the chat > Model library > + > Browse catalog > "Qwen2.5 0.5B Instruct" (398 MB, first in the list) > Download, then "..." > Change model. That same "..." button opens Personas, Tools, Compare two models and Settings; Settings > Privacy counts the bytes the app has sent.
+>
+> 4. EXTERNAL SERVICES
+> None for core functionality. Inference is Apple's FoundationModels framework plus the bundled llama.cpp library, both on-device. There is no authentication service, payment processor, analytics SDK, ad network or third-party AI API. The only outbound requests are: huggingface.co, for a model download the person starts and an optional weekly catalogue check that ships off, restricted in code to huggingface.co; googleapis.com/customsearch/v1, an optional Google Programmable Search tool inert until the person supplies their own API key; and a URL the person writes in the optional HTTPS-request tool. A downloaded .gguf file is weights read as data by llama.cpp: nothing downloaded is executed and the app's functionality does not change (guideline 2.5.2).
+>
+> 5. REGIONAL DIFFERENCES
+> None - the app functions consistently across all regions. No geo-gating, regional pricing, region-specific content, or server that could vary by region. The only variation is Apple's own: where Apple Intelligence is unavailable, the person downloads a model instead.
+>
+> 6. REGULATED INDUSTRY AND THIRD-PARTY MATERIAL
+> Sotto is not in a regulated industry and gives no medical, legal or financial advice. It redistributes no model weights: the catalogue links to each publisher's own files on Hugging Face and shows the publisher and licence for every entry (Apache-2.0, MIT, Llama 3.2 Community License, Gemma Terms of Use, Qwen Research License). The bundled llama.cpp library is MIT-licensed and named in Settings > About. Source: https://github.com/yasasalwis/Sotto
+
+#### Shot list for the iPhone recording
+
+Only this needs a physical iPhone; everything else above is done. Two to three minutes.
+
+Before recording:
+- Install the **new** TestFlight build — the one with the two fixes, not 1.0 (11).
+- **Delete the app first** so the recording opens on a genuine first run. This also deletes any
+  model already downloaded, which is the point: the welcome screen is what a reviewer meets.
+- Turn on a Focus so no notification banner lands mid-take, and record on the latest public iOS.
+- Do **not** film "Import a model instead". It is fixed, but it opens the Files app and puts your
+  own documents on screen. Nothing in Apple's request asks for it.
+
+In order:
+1. The Home Screen, then tap the Sotto icon. Launch it in the recording, not before it.
+2. The welcome screen. Hold it about three seconds so the generated-text notice is readable.
+3. Tap **Start chatting**, tap the composer, and let the keyboard come up — the composer and send
+   button must stay visible, which is what the 1.0 (11) fix was for. Type a question and send it.
+   Let the answer stream in rather than cutting to it.
+4. **Turn on Airplane Mode and ask a second question.** This is the whole claim of the app in one
+   shot, and it is the cheapest thing a reviewer can verify.
+5. Turn Airplane Mode off. **⋯ › Model library › + › Browse catalog**, far enough down to show
+   the publisher and licence on the entries. Start the Qwen2.5 0.5B download; you can cut away
+   rather than wait it out.
+6. **⋯ › Personas**, **⋯ › Tools**, then **⋯ › Settings › Privacy** for the bytes-sent counter.
+
+Afterwards: check it frame by frame before sending — a contact sheet
+(`ffmpeg -i in.mov -vf "fps=1/6,scale=400:-1,tile=3x3" sheet.png`) catches a leaked notification
+or a stalled answer in one look. If the file is too large for Resolution Center, re-encode rather
+than trim: `ffmpeg -i in.mov -vcodec libx264 -crf 28 -preset veryfast -an out.mp4`.
+
 ## 5. Things to weigh before you submit
 
 Not blockers — decisions that are yours.
@@ -378,6 +535,31 @@ would have met the keyboard bug, which is a Guideline 2.1 rejection waiting to h
 Attaching a new build means removing the version from review first (App Store Connect will not
 swap a build underneath a submission), so both lost their place in the queue. That was the right
 trade against shipping a build whose composer disappears behind the keyboard.
+
+### iOS rejected on build 1.0 (11), 6 September 2026
+
+**iOS came back under Guideline 2.1 — Information Needed, the same template macOS got**, on the
+same build. Its Notes field already carried the answers, which did not pre-empt it: the request
+is for the recording, and only the recording clears it.
+
+| | iOS | macOS |
+|---|---|---|
+| Build under review | 1.0 (11) | 1.0 (11) |
+| Status | **Rejected — 2.1 Information Needed**, 6 September 2026 | — |
+
+What goes back: an iPhone recording, the reply in
+[The iOS answer, 6 September 2026](#the-ios-answer-6-september-2026), and **a new build** — two
+defects found while testing this one are fixed there, the welcome screen's dead import button and
+raw `<tool_response>` markup in replies. Both are described in that section.
+
+Because a new build is attached, the version has to be removed from review first, as on
+4 September. Upload the Xcode Cloud build, add it to the version, then reply.
+
+**macOS is untouched by this.** It is still under review on build 1.0 (11), and the two fixes do
+not change anything a Mac reviewer sees — the importer guard is macOS-behaviour-preserving by
+construction and the tag stripping is engine-level. Whether to push the same build to macOS as
+well is a judgement call: it would lose macOS its place in the queue for a fix that only shows on
+iOS. Leaving it is defensible; if macOS is rejected for anything else, roll the fixes in then.
 
 ### Second round of TestFlight fixes
 
@@ -491,11 +673,26 @@ build, and both will bite again if they are undone:
 
 ### Still outstanding
 
-- [ ] The screen recording Apple asked for under Guideline 2.1 — one per platform, made on a
-      physical device. See section 4, "Item 1 — the screen recording". The Resolution Center
-      reply is written and saved as a draft; it needs the recording attached before it is sent.
+- [ ] **The iPhone screen recording.** The one thing here that cannot be done from this Mac. Shot
+      list in section 4, "Shot list for the iPhone recording". macOS is done
+      (`Sotto-macOS-demo.mp4`, sent 4 September).
+- [ ] **Upload the new Xcode Cloud build and attach it to the iOS version** before replying — the
+      reply says the build carries both fixes, so it must. Remove the version from review first;
+      App Store Connect will not swap a build underneath a submission.
+- [ ] **Paste the iOS Notes text** from section 4 over what is in App Store Connect. The current
+      field still names Mac keyboard shortcuts that do not exist on iOS.
+- [ ] **Look at the iPhone screenshots again before replying.** Apple's *Prevent Common Issues*
+      list calls out guideline 2.3.3: screenshots must show the app in use, "not merely the title
+      art, login page, or splash screen". Sotto's welcome screen is the closest thing it has to a
+      splash screen, and it is a plausible first screenshot. If one of the four is the welcome
+      screen, replace it with a chat mid-answer, the model library, or the tools list. This cannot
+      be checked from the repository — only in App Store Connect.
 - [ ] If review comes back asking about the age rating, the answers behind the 18+ override
       are recorded in section 3.
+
+> **No version bump is needed.** `CURRENT_PROJECT_VERSION` is still `1` in the project and always
+> has been; Xcode Cloud sets the build number on upload, which is where 3, 5, 7 and 11 came from.
+> Bumping it by hand is only for an archive made locally.
 
 ### Closed
 

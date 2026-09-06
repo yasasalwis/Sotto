@@ -194,6 +194,85 @@ struct ToolCallScannerTests {
         _ = scanner.feed("<tool_call>{\"name\":\"a\",\"arguments\":{}}")
         #expect(scanner.flush().call?.name == "a")
     }
+
+    // MARK: - Echoed tool responses
+
+    /// Reported from an iPhone: `<tool_response>date</tool_response>` appeared in the transcript.
+    /// The system prompt tells the model results arrive in those tags, so it writes them itself.
+    @Test func swallowsAToolResponseTheModelWroteItself() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("<tool_response>date</tool_response>")
+        #expect(output.visible.isEmpty)
+        #expect(output.call == nil)
+        #expect(output.unparsedBlock == nil)
+    }
+
+    @Test func keepsTheAnswerAroundAnEchoedResponse() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("Today is <tool_response>2026-09-06</tool_response> Friday.")
+        #expect(output.visible == "Today is  Friday.")
+    }
+
+    /// `<tool_` is the shared prefix of both tags, so a hold-back sized for `<tool_call>` alone
+    /// would leak `<tool_response>` one chunk at a time.
+    @Test func holdsBackAPartialResponseTagAcrossChunks() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("Sure. <tool_resp").visible == "Sure. ")
+        #expect(scanner.feed("onse>18:20</tool_resp").visible.isEmpty)
+        #expect(scanner.feed("onse>").visible.isEmpty)
+        #expect(scanner.feed(" Anything else?").visible == " Anything else?")
+    }
+
+    @Test func heldBackSuffixCoversTheLongerTag() {
+        #expect(ToolCallScanner.heldBackSuffixLength(of: "abc<tool_res") == 9)
+        #expect(ToolCallScanner.heldBackSuffixLength(of: "abc<tool") == 5)
+        #expect(ToolCallScanner.heldBackSuffixLength(of: "abc") == 0)
+    }
+
+    /// An echo that never closes must not be flushed into the transcript at end of stream.
+    @Test func anUnterminatedEchoIsDroppedOnFlush() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("<tool_response>partial result").visible.isEmpty)
+        #expect(scanner.flush().visible.isEmpty)
+    }
+
+    @Test func aStrayClosingResponseTagIsDropped() {
+        var scanner = ToolCallScanner()
+        #expect(scanner.feed("The time is 18:20.</tool_response>").visible == "The time is 18:20.")
+    }
+
+    // MARK: - Snapshot stripping, for Apple's growing-snapshot stream
+
+    @Test func stripsAnEchoFromASnapshot() {
+        #expect(ToolCallScanner.strippingEchoedResponses("It is <tool_response>18:20</tool_response> now.") == "It is  now.")
+    }
+
+    @Test func leavesOrdinaryTextUntouched() {
+        let answer = "A tool is a program you call. Here is < and > and </div>."
+        #expect(ToolCallScanner.strippingEchoedResponses(answer) == answer)
+    }
+
+    @Test func dropsTheTailOfAnUnfinishedSnapshotEcho() {
+        #expect(ToolCallScanner.strippingEchoedResponses("Checking. <tool_response>18:2") == "Checking. ")
+    }
+
+    @Test func dropsAStrayCloserFromASnapshot() {
+        #expect(ToolCallScanner.strippingEchoedResponses("Done.</tool_response>") == "Done.")
+    }
+
+    @Test func stripsEveryEchoInASnapshot() {
+        let text = "<tool_response>a</tool_response>then<tool_response>b</tool_response>end"
+        #expect(ToolCallScanner.strippingEchoedResponses(text) == "thenend")
+    }
+
+    /// A real call still has to win when both tags are in the same chunk.
+    @Test func aCallBeforeAnEchoStillParses() {
+        var scanner = ToolCallScanner()
+        let output = scanner.feed("<tool_call>{\"name\":\"date\",\"arguments\":{}}</tool_call>")
+        #expect(output.call?.name == "date")
+        let after = scanner.feed("<tool_response>2026-09-06</tool_response>Done.")
+        #expect(after.visible == "Done.")
+    }
 }
 
 @MainActor

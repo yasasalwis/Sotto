@@ -7,7 +7,10 @@ final class SottoUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         // Fresh onboarding, in-memory store, no lock: deterministic regardless of the host's state.
-        app.launchArguments += ["-hasCompletedOnboarding", "NO", "-storeConversations", "NO", "-requireAppLock", "NO"]
+        // `-uiTesting` is read by the macOS app delegate in Debug builds only: XCUITest execs the
+        // binary rather than opening it, so the main scene's `handlesExternalEvents(matching:)`
+        // never sees the event it waits for and no window appears. See `SottoMacAppDelegate`.
+        app.launchArguments += ["-hasCompletedOnboarding", "NO", "-storeConversations", "NO", "-requireAppLock", "NO", "-uiTesting", "YES"]
     }
 
     @MainActor

@@ -65,5 +65,24 @@ final class SottoMacAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         true
     }
+
+    #if DEBUG
+    /// Gives a test-launched app the external event its main scene is waiting for.
+    ///
+    /// `WindowGroup` here carries `.handlesExternalEvents(matching: ["*"])`, which makes SwiftUI
+    /// defer creating a window until an external event arrives. Finder, the Dock, Spotlight and
+    /// `open` all send one, so every real launch gets a window — but XCUITest execs the binary
+    /// directly and sends nothing, so the app came up with a menu bar and no window and all three
+    /// `SottoUITests` timed out hunting for views that were never on screen. That is a harness
+    /// mismatch, not a defect a user can reach, and it had quietly disabled the only test covering
+    /// the sandboxed export.
+    ///
+    /// Re-opening our own bundle sends exactly the event the scene wants, at the one moment it is
+    /// missing. Gated on a launch argument only the UI tests pass, and compiled out of Release.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard UserDefaults.standard.bool(forKey: "uiTesting") else { return }
+        NSWorkspace.shared.open(Bundle.main.bundleURL)
+    }
+    #endif
 }
 #endif
