@@ -561,6 +561,35 @@ construction and the tag stripping is engine-level. Whether to push the same bui
 well is a judgement call: it would lose macOS its place in the queue for a fix that only shows on
 iOS. Leaving it is defensible; if macOS is rejected for anything else, roll the fixes in then.
 
+### Answered and resubmitted, 6 September 2026
+
+**iOS 1.0 went back to App Review on build 1.0 (16), and is Waiting for Review.** Submission
+`e925623c-04ee-408f-8329-2841869c4eb7`, the same one that was rejected — the reply and the new
+build go onto the existing thread rather than a fresh submission.
+
+What was sent:
+- **The recording.** Made on the iPhone against build 14, exported from iMovie as a 4K landscape
+  file with the portrait capture letterboxed inside it, 4 min 57 s, 130 MB. Re-encoded to 1920×1080
+  H.264 at CRF 27 — **9.7 MB**, content untouched. The original would very likely have been refused
+  by the attachment upload, and the upload path caps at 10 MB, so there is not much room above this.
+- **The reply**, on the Resolution Center thread with the file attached.
+- **Build 1.0 (16)** swapped onto the version in place of 13.
+- **The Notes field**, replaced with the iOS text in this file.
+
+Two claims in the drafted reply were wrong by the time it was sent and were corrected first: it
+said the recording begins on the Home Screen (it begins in TestFlight), and it named two fixes when
+there were nine. **Read the reply against the artefact before sending it, not against the plan.**
+
+> **The Resolution Center field counts characters differently from the Notes field.** 3,986
+> characters by `wc -m` came back as 41 over the 4,000 limit — line breaks are counted as two.
+> Budget about 3,900 for a reply of this shape.
+
+> **The attachment needs the text in place first.** Uploading the file before the reply body was
+> typed left the input holding a file the page never registered — no filename, no progress. Type
+> the reply, then attach, then wait for "Processing…" to become the filename before sending.
+> Submitting is two steps, not one: **Update Review** on the version page moves the item to *Ready
+> for Review*, and **Resubmit to App Review** on the submission page actually sends it.
+
 ### Third round of TestFlight fixes, on build 1.0 (13)
 
 Build 13 went to the phone for the App Review recording and came back with five reports before a
