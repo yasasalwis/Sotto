@@ -17,11 +17,36 @@ enum ToolPromptFormatter {
     /// not to, so both engines put this in front of the tool list.
     static let usageRule = "Most messages need no tool. Answer from your own knowledge unless the request plainly asks for something you cannot know or work out yourself. A greeting is never a reason to call a tool. Phrases such as \"in one word\", \"briefly\" or \"in short\" describe how to answer; they are not requests to count, measure, or look anything up. Never call a tool to decorate an answer with facts the user did not ask for. When a tool is genuinely needed, call one, use exactly what it returns, and never invent a result."
 
+    /// The tool section of the system prompt.
+    ///
+    /// The wording matters more than it looks. This used to read "To call a tool, reply with
+    /// exactly this block and nothing else:" followed by the template, and a small model reads
+    /// that as the instruction it has been given: the leading clause is conditional, the rest is
+    /// imperative and concrete, and the imperative wins. Qwen2.5 0.5B and Gemma 2 2B both answered
+    /// a bare "Hello" by calling `current_datetime` — the first tool in the list, chosen because
+    /// something had to be. So the default is stated first and in its own sentence, the template
+    /// is guarded where it sits rather than only in the rule above it, and there is an explicit
+    /// instruction for the ordinary case, because "do nothing special" is not obvious to a 0.5B.
     static func instructions(for tools: [ToolSpec]) -> String {
         guard !tools.isEmpty else { return "" }
-        var text = "# Tools\n\n\(usageRule)\n\nTo call a tool, reply with exactly this block and nothing else:\n"
+        var text = "# Tools\n\n\(usageRule)\n\n"
+        // Both halves have to be here, and in this order. Restraint alone is not a rule a 0.5B can
+        // apply: told only what not to do, Qwen2.5 answered "what is the date and time right now?"
+        // with a confidently invented 2023 timestamp rather than calling the tool sitting in front
+        // of it — a worse failure than the over-eager one, because it looks like an answer. So the
+        // trigger is stated first and concretely, in terms of what the model cannot know, and the
+        // default comes second.
+        text += "You do not know the current date or time, you cannot look anything up, and you cannot do arithmetic reliably. When the answer depends on one of those, or on the user's own past chats, send the block below instead of guessing an answer.\n\n"
+        text += "Otherwise answer directly, in your own words, with no tool at all. That is almost every message.\n\n"
+        // "Send the block below", not "call the tool": told to call one, Qwen2.5 wrote
+        // `current_datetime(value: {})` into the reply as prose — function-call syntax it had seen
+        // somewhere, in a format nothing here parses. The instruction has to point at the block,
+        // because the block is the only thing that works.
+        text += "The block is the only way to use a tool. Writing a tool's name in your answer does nothing. To use one, reply with exactly this and nothing else:\n"
         text += "\(openTag)\n{\"name\": \"<tool name>\", \"arguments\": {<arguments as JSON>}}\n\(closeTag)\n"
-        text += "The result comes back inside \(responseOpenTag) tags; continue your answer from there.\n\nAvailable tools:\n"
+        text += "The result comes back inside \(responseOpenTag) tags; continue your answer from there.\n"
+        text += "When no tool is needed, write ordinary prose and do not mention tools, this block, or these names.\n\n"
+        text += "Available tools:\n"
         for tool in tools {
             text += "- \(tool.name): \(tool.description)\n  parameters: \(tool.parametersSchemaJSON)\n"
         }

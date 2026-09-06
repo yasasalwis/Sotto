@@ -161,22 +161,36 @@ final class AppleIntelligenceEngine: InferenceEngine {
                     let start = clock.now
                     var firstToken: ContinuousClock.Instant?
                     var previous = ""
-                    let stream = session.streamResponse(to: last.content, options: options)
-                    for try await snapshot in stream {
-                        try Task.checkCancellation()
-                        // The session calls tools itself, so nothing here should carry protocol
-                        // markup — but a model that wrote `<tool_response>` anyway used to have it
-                        // land in the transcript verbatim. A snapshot that shrinks when a tag
-                        // closes simply fails the prefix check below and is sent as a replacement.
-                        let content = ToolCallScanner.strippingEchoedResponses(snapshot.content)
-                        if firstToken == nil { firstToken = clock.now }
-                        if content.hasPrefix(previous) {
-                            let delta = String(content.dropFirst(previous.count))
-                            if !delta.isEmpty { continuation.yield(.delta(delta)) }
-                        } else {
-                            continuation.yield(.replace(content))
+                    var attemptsLeft = 2
+                    while true {
+                        attemptsLeft -= 1
+                        do {
+                            let stream = session.streamResponse(to: last.content, options: options)
+                            for try await snapshot in stream {
+                                try Task.checkCancellation()
+                                // The session calls tools itself, so nothing here should carry
+                                // protocol markup — but a model that wrote `<tool_response>`
+                                // anyway used to have it land in the transcript verbatim. A
+                                // snapshot that shrinks when a tag closes simply fails the prefix
+                                // check below and is sent as a replacement.
+                                let content = ToolCallScanner.strippingEchoedResponses(snapshot.content)
+                                if firstToken == nil { firstToken = clock.now }
+                                if content.hasPrefix(previous) {
+                                    let delta = String(content.dropFirst(previous.count))
+                                    if !delta.isEmpty { continuation.yield(.delta(delta)) }
+                                } else {
+                                    continuation.yield(.replace(content))
+                                }
+                                previous = content
+                            }
+                            break
+                        } catch where attemptsLeft > 0 && previous.isEmpty && Self.isWorthRetrying(error) {
+                            // Nothing has reached the transcript, so this is invisible to the
+                            // person: the first message of a session failing with the framework's
+                            // unnamed error and succeeding immediately afterwards is the whole
+                            // reason a retry exists here.
+                            Log.engine.notice("Apple Intelligence failed before producing text; retrying once")
                         }
-                        previous = content
                     }
                     let end = clock.now
                     let total = Self.seconds(start.duration(to: end))
@@ -267,8 +281,22 @@ final class AppleIntelligenceEngine: InferenceEngine {
         case .refusal:
             return .refusal(error.localizedDescription)
         default:
-            return .underlying(error.localizedDescription)
+            return .appleGenerationFailed
         }
+    }
+
+    /// Whether a failure is worth one silent second attempt.
+    ///
+    /// Every case `map` names is a real answer to give a person: the window is full, the guardrail
+    /// fired, the language is unsupported. Retrying those wastes their time and says the same thing
+    /// twice. What is left is `GenerationError error -1`, which the framework does not explain and
+    /// which has been seen on the first message of a session and then not again on the identical
+    /// prompt a moment later — the shape of assets that were not warm yet. That one gets a retry,
+    /// and only before any text has been streamed, so a reply can never be restarted midway
+    /// through and shown twice.
+    private static func isWorthRetrying(_ error: Error) -> Bool {
+        guard let generation = error as? LanguageModelSession.GenerationError else { return false }
+        return map(generation) == .appleGenerationFailed
     }
 
     private static func seconds(_ duration: Duration) -> Double {

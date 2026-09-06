@@ -118,6 +118,12 @@ enum EngineError: LocalizedError, Hashable {
     case noUserMessage
     case busy
     case toolFailed(String)
+    /// Apple's session failed in a way its own error type does not name. Kept apart from
+    /// `underlying` because that one passes the message straight through, and what comes out of
+    /// `GenerationError` in this case is "The operation couldn't be completed.
+    /// (FoundationModels.LanguageModelSession.GenerationError error -1.)" — a string that tells a
+    /// person nothing and puts a framework's internals in the transcript.
+    case appleGenerationFailed
     case underlying(String)
 
     var errorDescription: String? {
@@ -150,6 +156,8 @@ enum EngineError: LocalizedError, Hashable {
             return "A response is already being generated."
         case .toolFailed(let message):
             return message
+        case .appleGenerationFailed:
+            return "Apple Intelligence couldn't finish that reply. Tap retry — this usually clears on a second attempt. If it keeps happening, an imported model will work instead."
         case .underlying(let message):
             return message
         }

@@ -100,7 +100,12 @@ nonisolated struct DynamicToolGateway: Tool {
     static let preamble: String = {
         var text = "Runs one of this device's tools and returns its result. "
         text += ToolPromptFormatter.usageRule
-        text += "\n\nAnswer general-knowledge questions yourself. \"What is X\", \"explain Y\" and \"how does Z work\" are answered from what you already know and are never a reason to call a tool. Call one only when the user asks for something you cannot do by writing an answer: search their own past chats, compute a number exactly, convert units, or work on text they gave you.\n\nSet \"tool\" to exactly one name from the list below, and \"arguments\" to a JSON object of that tool's parameters — for example {\"expression\": \"12 * 7\"}. When a tool takes a single value you may pass that value on its own. Do not invent a tool that is not listed.\n\n"
+        // The examples used to be written as bare verb phrases — "What is X", "explain Y",
+        // "how does Z work". A 3B model lifted the middle one straight back out and called a tool
+        // named "explain", which does not exist, and then apologised to the user for it in the
+        // first line of an otherwise correct answer. Whole quoted questions cannot be mistaken for
+        // a name; a lone verb sitting in quotation marks can.
+        text += "\n\nAnswer general-knowledge questions yourself. Questions such as \"What is an LLM?\", \"How does HTTPS work?\" or \"Tell me about the Roman Republic\" are answered from what you already know and are never a reason to call a tool. Call one only when the user asks for something you cannot do by writing an answer: search their own past chats, compute a number exactly, convert units, or work on text they gave you.\n\nSet \"tool\" to exactly one name copied from the list below, and \"arguments\" to a JSON object of that tool's parameters — for example {\"expression\": \"12 * 7\"}. When a tool takes a single value you may pass that value on its own. Never pass a name that is not on the list; if none of them fits, do not call this tool at all and simply answer.\n\n"
         return text
     }()
 
@@ -131,19 +136,25 @@ nonisolated struct DynamicToolGateway: Tool {
     func call(arguments: GeneratedContent) async throws -> String {
         let fields = AppleDynamicTool.dictionary(from: arguments)
         let requested = (fields["tool"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // What comes back from here is read by the model, not by the person, and a 3B model
+        // narrates what it reads: told "there is no tool called X" it opened its reply with
+        // "I'm sorry, but I don't have a tool called \"explain\"" and then answered the question
+        // perfectly well. The person never asked for a tool and should not be told one was
+        // missing. So these say what to do next and ask for silence about it, rather than
+        // reporting a fault.
         guard !requested.isEmpty else {
-            return "No tool was named. Set \"tool\" to one of: \(availableNames)."
+            return "No tool was named, so nothing ran. Either name one of: \(availableNames) — or answer the user directly. Do not mention this to the user."
         }
         guard let spec = resolve(requested) else {
             // Naming the alternatives is what lets the model recover inside the same turn rather
-            // than apologising to the user for a failure it could have fixed itself.
-            return "There is no tool called \"\(requested)\". Available tools: \(availableNames)."
+            // than giving up on a call it could have fixed itself.
+            return "\"\(requested)\" is not one of this device's tools, so nothing ran. Either use one of: \(availableNames) — or, if none of them fits, answer the user directly from your own knowledge. Do not mention tools or this message to the user."
         }
         // A 3B model that gets an error back will cheerfully repeat the identical call until the
         // turn's budget is gone and then apologise. TestFlight reported exactly that: four failed
         // chat searches followed by "I apologize for the repeated errors". Two is enough to learn from.
         guard ledger.failures(of: spec.name) < Self.repeatedFailureLimit else {
-            return "\(spec.name) has already failed \(Self.repeatedFailureLimit) times in this reply. Do not call it again. Answer the user directly with what you already know."
+            return "\(spec.name) has already failed \(Self.repeatedFailureLimit) times in this reply. Do not call it again. Answer the user directly with what you already know, without mentioning the tool or these failures."
         }
         let json = Self.argumentsJSON(from: fields["arguments"], for: spec)
         let result = await runner.run(ToolCallRequest(name: spec.name, argumentsJSON: json))
