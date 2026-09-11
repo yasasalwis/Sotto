@@ -727,8 +727,27 @@ browser, in this order:
 2. **Privacy page.** `sotto-web` `main` at `f398c85`; Vercel had it live within a minute.
 3. **Build.** Commit `b3f1be0` pushed; Xcode Cloud build 18 started at 12:18 PM. **Archive - iOS
    succeeded** and was processed by 12:21 PM. **Archive - macOS failed** at *Prepare Build for
-   App Store Connect* — the compile was clean and macOS 1.0 is already *Ready for Distribution*,
-   so nothing was needed from it; look at that action's logs before the next macOS submission.
+   App Store Connect*, and so did build 19's. The compile was clean; the reason is in Apple's
+   "Action needed" email, not in the Xcode Cloud logs (which say only "Preparing build for App
+   Store Connect failed"):
+
+   > ITMS-90062: The value for key CFBundleShortVersionString [1.0] in the Info.plist file must
+   > contain a higher version than that of the previously approved version [1.0].
+   > ITMS-90186: Invalid Pre-Release Train - The train version '1.0' is closed for new build
+   > submissions.
+
+   macOS 1.0 was approved on 4 September, which closes the 1.0 train for macOS: **every macOS
+   archive with `MARKETING_VERSION = 1.0` is refused at upload from now on**, so every push to
+   `main` shows a red build until the version is bumped. The iOS action is unaffected while iOS
+   1.0 is still under review. **The same will happen to iOS the moment iOS 1.0 is approved.**
+
+   What to do, in order: wait for the iOS decision on build 18 (a bump now would strand the
+   version under review); then bump `MARKETING_VERSION` to `1.0.1` (or `1.1`) in the Sotto
+   target, create that version on both platforms in App Store Connect, and push. If the red
+   builds are a nuisance before then, edit the *Default* workflow's *Archive - macOS* action and
+   set *Distribution Preparation* to **None** temporarily — remember to set it back to *App Store
+   Connect*, or the next macOS release will produce a green build that never reaches App Store
+   Connect (see [Xcode Cloud](#xcode-cloud)).
 4. **Notes field.** The 3,990-character draft showed as **7 over** in App Store Connect's own
    counter, so the opening sentence was shortened to "Guideline 2.1 answers follow, numbered as
    asked." — 10 to spare. Saved.
@@ -918,6 +937,10 @@ build, and both will bite again if they are undone:
 > **No version bump is needed.** `CURRENT_PROJECT_VERSION` is still `1` in the project and always
 > has been; Xcode Cloud sets the build number on upload, which is where 3, 5, 7 and 11 came from.
 > Bumping it by hand is only for an archive made locally.
+>
+> **`MARKETING_VERSION`, on the other hand, must go up after each approval.** macOS 1.0 was
+> approved on 4 September and from build 18 onward every macOS upload of version 1.0 is refused
+> with ITMS-90062 / ITMS-90186. Bump it once iOS 1.0 is decided; see the 11 September entry.
 
 ### Closed
 
