@@ -651,6 +651,8 @@ struct ChatSessionToolRunnerTests {
         async let result = harness.session.run(ToolCallRequest(name: "search_conversations", argumentsJSON: "{\"query\":\"anything\"}"))
         try await waitForApproval(harness.session)
         #expect(harness.session.pendingToolApproval?.toolName == "search_conversations")
+        #expect(harness.session.pendingToolApproval?.disclosure.leavesDevice == false)
+        #expect(harness.session.pendingToolApproval?.effect == "Runs on this device.")
         harness.session.resolveToolApproval(.deny)
         let outcome = await result
         #expect(outcome.denied)
@@ -669,6 +671,28 @@ struct ChatSessionToolRunnerTests {
         let outcome = await result
         #expect(outcome.success)
         #expect(search.approval == .automatic)
+    }
+
+    /// A networked tool's card has to name where the arguments go before the person decides.
+    /// Declining means no request is made, so the test never touches the network.
+    @Test func networkedToolsDiscloseTheDestinationBeforeRunning() async throws {
+        let remote = ToolDefinition(name: "lookup", displayName: "Lookup", summary: "", kind: .httpRequest,
+                                    parameters: [ToolParameter(name: "term")])
+        var config = HTTPToolConfig()
+        config.urlTemplate = "https://example.com/search?q={term}"
+        remote.httpConfig = config
+        let harness = try Harness(tools: [remote], persona: nil)
+        defer { withExtendedLifetime(harness) {} }
+        async let result = harness.session.run(ToolCallRequest(name: "lookup", argumentsJSON: "{\"term\":\"tea\"}"))
+        try await waitForApproval(harness.session)
+        let pending = try #require(harness.session.pendingToolApproval)
+        #expect(pending.disclosure.leavesDevice)
+        #expect(pending.disclosure.destinationHost == "example.com")
+        #expect(pending.effect == "GET https://example.com/search?q=tea")
+        harness.session.resolveToolApproval(.deny)
+        let outcome = await result
+        #expect(outcome.denied)
+        #expect(remote.usageCount == 0)
     }
 
     @Test func unknownToolsAreReportedToTheModel() async throws {
@@ -1133,5 +1157,79 @@ extension ToolRelevanceTests {
         // Running a tool outside a turn — the editor's "Run once" — has nothing to test against.
         #expect(ToolRelevance.allows(.searchConversations, forUserMessage: ""))
         #expect(ToolRelevance.allows(.searchConversations, forUserMessage: "   \n "))
+    }
+}
+
+/// What the approval card says before a tool runs. Guidelines 5.1.1(i) and 5.1.2(i) want the
+/// person told what is sent and to whom before anything leaves the device, so every kind of
+/// tool has to produce a truthful disclosure, and the two networked kinds have to name a host.
+@MainActor
+struct ToolDisclosureTests {
+    @Test func builtInsSayNothingLeavesTheDevice() throws {
+        let calculator = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .calculator })
+        let disclosure = ToolDisclosure.make(for: calculator, arguments: ["expression": "6*7"])
+        #expect(!disclosure.leavesDevice)
+        #expect(disclosure.destinationHost == nil)
+        #expect(disclosure.effect == "Runs on this device.")
+        #expect(disclosure.dataSentSummary == "Nothing leaves this device.")
+    }
+
+    @Test func delegatingIsDescribedAsASecondSessionOnThisDevice() throws {
+        let delegate = try #require(ToolDefinition.builtInSeeds().first { $0.builtIn == .delegate })
+        let disclosure = ToolDisclosure.make(for: delegate, arguments: ["task": "Summarise this"])
+        #expect(!disclosure.leavesDevice)
+        #expect(disclosure.effect.contains("second model session on this device"))
+    }
+
+    @Test func googleSearchNamesGoogleAndSendsOnlyTheQuery() throws {
+        let search = try #require(ToolDefinition.builtInSeeds().first { $0.kind == .webSearch })
+        var config = WebSearchConfig()
+        config.site = "apple.com"
+        search.webSearchConfig = config
+        let disclosure = ToolDisclosure.make(for: search, arguments: ["query": " swift concurrency "])
+        #expect(disclosure.leavesDevice)
+        #expect(disclosure.destinationHost == "www.googleapis.com")
+        #expect(disclosure.effect == "Search Google for “swift concurrency” on apple.com")
+        #expect(disclosure.dataSentSummary.contains("Google (www.googleapis.com)"))
+        #expect(disclosure.dataSentSummary.contains("only these search words"))
+        #expect(disclosure.dataSentSummary.contains("Nothing else from this chat is sent"))
+    }
+
+    @Test func httpsToolNamesTheHostItWasSetUpWith() {
+        let tool = ToolDefinition(name: "weather", displayName: "Weather", summary: "", kind: .httpRequest,
+                                  parameters: [ToolParameter(name: "city")])
+        var config = HTTPToolConfig()
+        config.urlTemplate = "https://API.Example.com/v1/weather?city={city}"
+        config.method = "post"
+        tool.httpConfig = config
+        let disclosure = ToolDisclosure.make(for: tool, arguments: ["city": "Colombo"])
+        #expect(disclosure.leavesDevice)
+        #expect(disclosure.destinationHost == "api.example.com")
+        #expect(disclosure.effect == "POST https://API.Example.com/v1/weather?city=Colombo")
+        #expect(disclosure.dataSentSummary.contains("api.example.com, the address this tool was set up with"))
+        #expect(disclosure.dataSentSummary.contains("Nothing else from this chat is sent"))
+    }
+
+    @Test func anHttpsToolWithAnUnreadableAddressStillSaysItLeavesTheDevice() {
+        let tool = ToolDefinition(name: "broken", displayName: "Broken", summary: "", kind: .httpRequest)
+        var config = HTTPToolConfig()
+        config.urlTemplate = "not a url"
+        tool.httpConfig = config
+        let disclosure = ToolDisclosure.make(for: tool, arguments: [:])
+        #expect(disclosure.leavesDevice)
+        #expect(disclosure.destinationHost == nil)
+        #expect(disclosure.dataSentSummary.contains("the address this tool was set up with"))
+    }
+
+    @Test func shellToolsSendNothing() {
+        let tool = ToolDefinition(name: "list", displayName: "List", summary: "", kind: .shellCommand,
+                                  parameters: [ToolParameter(name: "path")])
+        var config = ShellToolConfig()
+        config.command = "ls {path}"
+        tool.shellConfig = config
+        let disclosure = ToolDisclosure.make(for: tool, arguments: ["path": "/tmp"])
+        #expect(!disclosure.leavesDevice)
+        #expect(disclosure.effect == "ls /tmp")
+        #expect(disclosure.dataSentSummary.contains("sends nothing anywhere"))
     }
 }

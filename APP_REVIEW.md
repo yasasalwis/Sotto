@@ -29,6 +29,7 @@ quietly undo one.
 | Shell tool compiled out of App Store builds (guideline 2.5.2) | `ToolKind.shellToolIsCompiledIn` |
 | Model download host pinned to `huggingface.co` at runtime | `ModelCatalog.validate()` |
 | Menu bar item is a normal `MenuBarExtra`, not a background-only app | `SottoApp`; `LSUIElement` is deliberately unset, so Sotto keeps its Dock icon and windows |
+| Data-flow disclosure inside the app: the approval card names the host and what is sent before a networked tool runs; Settings › Privacy › "Where your data goes" lists every destination (guidelines 5.1.1(i) / 5.1.2(i)) | `Sotto/Engines/Tools/ToolDisclosure.swift`, `PrivacyPane.dataFlowGroup` in `SettingsView.swift` |
 
 > **`AppLinks` points at `sotto.eonix.lk` for the privacy policy and support pages, and at
 > GitHub for the source.** If a page moves, change `Sotto/Domain/AppLinks.swift` and the URLs
@@ -101,6 +102,18 @@ Tool API keys stay in the keychain.
 > collect, so it does not change the answer — but it is described in the privacy policy and in
 > the review notes below, which is what matters.
 
+**Guidelines 5.1.1(i) and 5.1.2(i), raised on 8 September 2026.** App Review read the app as
+sharing personal data with a third-party AI service. It does not: there is no AI API, SDK or
+server, and inference is Apple's on-device model or llama.cpp on the device. The rejection
+carries its own instruction for that case — *"If the app does not send user data to a
+third-party AI service… reply to this rejection to confirm and add this information to the App
+Review Information section"* — and both are done: the Notes field in section 4 now opens with
+**THIRD-PARTY AI SERVICES: NONE**, and the reply in section 7 says the same. The app also says
+it in three places, so a second reviewer cannot form the same impression from the screens:
+the approval card before any networked tool names the host and what is sent, Settings › Privacy
+has a **Where your data goes** section, and the catalogue footer says a downloaded model runs
+on the device. See [iOS rejected on build 1.0 (16)](#ios-rejected-on-build-10-16-8-september-2026).
+
 ### Age rating
 
 Sotto runs open-weight models that no one filters, so it can produce mature language and
@@ -114,6 +127,12 @@ Two judgement calls worth making deliberately:
   Decide and be consistent; if in doubt, answering yes costs nothing but the rating you are
   already taking.
 - **AI-generated content** — declare it. The app's whole purpose is generating text.
+- **Health or Wellness Topics — Yes.** Required by App Review on 8 September 2026 under
+  guideline 2.3.6: a general-purpose model will discuss health and wellness if asked, so the
+  rating has to say so. It is set on the **App Information** page (Age Rating › Edit), not on
+  the version page, and it does not move the rating — the 18+ override stays. The in-app
+  notice, the privacy policy and the review notes now all say model output is not medical,
+  legal or financial advice, so the four agree.
 
 Getting this wrong is a common rejection under guideline 2.3.6 and a common removal later.
 
@@ -178,6 +197,10 @@ The two texts differ only where the platform does: the macOS copy names the menu
 keyboard shortcuts and the compiled-out shell tool; the iOS copy says Airplane Mode and drops
 those. Everything else is identical.
 
+> **The macOS field needs the THIRD-PARTY AI SERVICES paragraph too**, added below on
+> 11 September 2026 after the iOS rejection. The macOS text was never counted in this file;
+> check the 4,000 cap in App Store Connect when pasting and trim section 3 first if it is over.
+
 The source link is there deliberately. A 2.1 request goes to accounts App Review does not know
 yet, and a public repository is the cheapest way for a reviewer to check the claims that matter
 most here — no server, no analytics, inference on the device. It only works while the repository
@@ -185,6 +208,13 @@ stays public.
 
 > Sotto is a free, offline-first AI chat app. No account, no server, no analytics, no ads and no
 > in-app purchase of any kind. Answers to the Guideline 2.1 questions follow, numbered as asked.
+>
+> **THIRD-PARTY AI SERVICES: NONE.** Sotto does not send user data to any third-party AI service
+> and contains no AI API, SDK or server. Inference is Apple's FoundationModels framework (the
+> on-device model) and the bundled llama.cpp library, both on the device. The catalogue names
+> Meta, Google, Microsoft, Alibaba and Mistral AI because their open-weight files are what a
+> person downloads; those files are read as data on the device and none of those companies
+> receives anything. Settings › Privacy › "Where your data goes" states this in the app.
 >
 > **2. PURPOSE AND AUDIENCE**
 > Sotto runs a language model entirely on the device: ask questions, draft and rewrite text,
@@ -348,36 +378,39 @@ earlier iOS notes inherited "(⇧⌘L)", "(⇧⌘P)", "(⇧⌘K)" and "(⇧⌘T)
 class of mistake as the welcome-button wording above, and it sends a reviewer looking for
 something that is not there.
 
-#### iOS Notes field (3730 of 4,000 characters)
+#### iOS Notes field (3,990 of 4,000 characters, by `wc -m`)
 
-> Sotto is a free, offline-first AI chat app. No account, no server, no analytics, no ads and no in-app purchase of any kind. Answers to the Guideline 2.1 questions follow, numbered as asked.
+Rewritten on 11 September 2026 for the 8 September rejection: it opens with the third-party AI
+answer, declares the health topic, and names the approval card. Paste it over what is in App
+Store Connect.
+
+> Sotto is a free, offline-first AI chat app. No account, no server, no analytics, no ads and no in-app purchase of any kind. Guideline 2.1 answers follow, numbered as asked.
+>
+> THIRD-PARTY AI SERVICES: NONE. Sotto does not send user data to any third-party AI service and contains no AI API, SDK or server. Inference is Apple's FoundationModels framework (the on-device model) and the bundled llama.cpp library, both on the device. The catalogue names Meta, Google, Microsoft, Alibaba and Mistral AI because their open-weight files are what a person downloads; those files are read as data on the device and none of those companies receives anything. Settings > Privacy > "Where your data goes" states this in the app.
 >
 > 2. PURPOSE AND AUDIENCE
-> Sotto runs a language model entirely on the device: ask questions, draft and rewrite text, summarise documents, get help with code. Mainstream AI chat apps send every message to a company's server; Sotto sends nothing. Inference happens on this iPhone, so it works in Airplane Mode and a conversation never leaves the device. For privacy-conscious general users, students, writers, developers, and anyone handling confidential material. Rated 18+ because model output is unfiltered.
+> Sotto runs a language model entirely on the device: ask questions, draft and rewrite text, summarise documents, get help with code. Inference happens on this iPhone, so it works in Airplane Mode and a conversation never leaves the device. For privacy-conscious general users, students, writers and developers. Rated 18+ because model output is unfiltered; Health or Wellness Topics is declared because a general model will discuss them if asked.
 >
 > 3. SETTING UP AND REACHING THE MAIN FEATURES
-> No sign-in, no credentials, no sample files needed. Sotto uses either Apple's on-device model or an open-source model downloaded in the app.
-> - The welcome screen's main button always reads "Start chatting". Tap it, type a message, send. With Apple Intelligence on, it answers on-device with no download and no network.
-> - If Apple Intelligence is unavailable, the "Apple Intelligence" card on the welcome screen says why. Tap Start chatting, then the ... button at the top right of the chat > Model library > + > Browse catalog > "Qwen2.5 0.5B Instruct" (398 MB, first in the list, about a minute) > Download. Then ... > Change model... > Qwen2.5 0.5B Instruct.
-> Everything after that download works in Airplane Mode.
->
-> That same ... button opens Personas, Tools, Compare two models, Model library and Settings; the menu button at the top left opens the chat list. Settings > Privacy shows a live count of the bytes the app has sent.
+> No sign-in, no credentials, no sample files needed. The welcome screen's main button reads "Start chatting". Tap it, type a message, send. With Apple Intelligence on, it answers on-device with no download and no network.
+> If Apple Intelligence is unavailable, the "Apple Intelligence" card on the welcome screen says why. Tap Start chatting, then the ... button at the top right of the chat > Model library > + > Browse catalog > "Qwen2.5 0.5B Instruct" (398 MB, first in the list) > Download. Then ... > Change model... > Qwen2.5 0.5B Instruct. Everything after that download works in Airplane Mode.
+> That same ... button opens Personas, Tools, Compare two models, Model library and Settings; the menu button at the top left opens the chat list. Settings > Privacy shows where each kind of data goes and a live count of the bytes the app has sent.
 >
 > 4. EXTERNAL SERVICES
-> None for core functionality. Inference is Apple's FoundationModels framework plus the bundled llama.cpp library, both on-device. There is no authentication service, payment processor, analytics SDK, ad network or third-party AI API. The only outbound requests are:
-> - huggingface.co - a model download the person starts, and an optional weekly catalogue check that is off by default. Downloads are restricted in code to https://huggingface.co.
-> - googleapis.com/customsearch/v1 - an optional Google Programmable Search tool, inert until the person supplies their own API key.
-> - a URL the person writes themselves in the optional HTTPS-request tool.
+> None for core functionality. There is no authentication service, payment processor, analytics SDK, ad network or third-party AI API. The only outbound requests, each started by the person:
+> - huggingface.co - a model download, and an optional weekly catalogue check that ships off. Restricted in code to https://huggingface.co.
+> - googleapis.com/customsearch/v1 - an optional Google Programmable Search tool, off until the person supplies their own API key. Only the search words the model chose are sent; a card names Google and asks first.
+> - a URL the person writes themselves in the optional HTTPS-request tool; the card names the host and asks first.
 > A downloaded .gguf file is model weights read as data by llama.cpp. Nothing downloaded is executed and the app's functionality does not change (guideline 2.5.2).
 >
 > 5. REGIONAL DIFFERENCES
-> None. The same features and content ship in all 175 regions - no geo-gating, no regional pricing, no region-specific content, and no server that could vary by region. The one variation is Apple's own: where Apple Intelligence is unavailable, the welcome screen says so and the person downloads a model instead.
+> None. The same features and content ship in all 175 regions: no geo-gating, regional pricing, region-specific content, or server that could vary by region. Where Apple Intelligence is unavailable, the welcome screen says so and the person downloads a model instead.
 >
 > 6. REGULATED INDUSTRY AND THIRD-PARTY MATERIAL
-> Sotto is not in a regulated industry and offers no medical, legal or financial advice. It bundles and redistributes no model weights. The in-app catalogue links to each publisher's own files on Hugging Face and shows the publisher and licence for every entry (Apache-2.0, MIT, Llama 3.2 Community License, Gemma Terms of Use, Qwen Research License). The bundled llama.cpp inference library is MIT-licensed and is named in Settings > About.
+> Sotto is not in a regulated industry and provides no medical, legal or financial advice as a feature; the in-app notice says model output is none of those. It redistributes no model weights: the catalogue links to each publisher's own files on Hugging Face and shows the publisher and licence for every entry. The bundled llama.cpp library is MIT-licensed and named in Settings > About.
 >
 > GENERATED TEXT
-> Sotto does not filter or fact-check what a model produces, and says so on the welcome screen, on the empty chat screen and in Settings > About. The age rating reflects it. No content is shared between users, so there is nothing to report or block.
+> Sotto does not filter or fact-check model output, and says so on the welcome screen, the empty chat and Settings > About. Nothing is shared between users, so there is nothing to report or block.
 >
 > Privacy policy: https://sotto.eonix.lk/privacy
 > Support: https://sotto.eonix.lk/support
@@ -483,7 +516,7 @@ later change can be spotted.
 | Content rights | Contains/accesses third-party content, rights held — the catalog links to publishers' own weights |
 | Price | Free, all 175 countries or regions |
 | App Privacy | **Data Not Collected**, published. Privacy policy URL set |
-| Age rating | Calculated 13+, **overridden to 18+** (19+ Brazil and Korea; 17+ on OS earlier than 26) |
+| Age rating | Calculated 13+, **overridden to 18+** (19+ Brazil and Korea; 17+ on OS earlier than 26). **Health or Wellness Topics: Yes** from 11 September 2026, at App Review's request |
 | Sign-in required | No, on both platforms |
 | Screenshots | iPhone 6.9" ×4, iPad 13" ×3, Mac ×5 — all from the real app |
 | Review notes | Section 4 of this file, pasted into both platforms |
@@ -589,6 +622,96 @@ there were nine. **Read the reply against the artefact before sending it, not ag
 > the reply, then attach, then wait for "Processing…" to become the filename before sending.
 > Submitting is two steps, not one: **Update Review** on the version page moves the item to *Ready
 > for Review*, and **Resubmit to App Review** on the submission page actually sends it.
+
+### iOS rejected on build 1.0 (16), 8 September 2026
+
+Submission `e925623c-04ee-408f-8329-2841869c4eb7` came back on 8 September with two items,
+reviewed on an iPhone 17 Pro Max. Neither is a bug report, and the 2.1 information request is
+closed — the recording did its job.
+
+| Guideline | What Apple said | What is true | What goes back |
+|---|---|---|---|
+| 2.3.6 Accurate Metadata | The age rating must say **Yes** to *Health or Wellness Topics* | A general-purpose model will discuss health if asked; the questionnaire said No | Set Yes on the App Information page; the 18+ override stays |
+| 5.1.1(i) / 5.1.2(i) Privacy | The app "appears to share the user's personal data with a third-party AI service" without saying what, to whom, or asking first | It does not. No AI API, SDK or server; inference is on the device | Confirm it in the reply and in the Notes field — the rejection's own instruction for that case — plus a build that says so in the app |
+
+**Where the impression came from.** Nothing in the code sends a conversation anywhere, so the
+reviewer inferred it from the screens. The plausible sources, in order: the model catalogue,
+where every entry names an AI company — Meta, Google, Microsoft, Alibaba, Mistral AI — next to
+a Download button; the Google search tool in Tools; and *Delegate a task*, described as a
+second model session. None of those screens said, at the point of reading, that inference stays
+on the device. They do now.
+
+**What changed in the app**, all on iOS and macOS alike:
+
+- **The approval card discloses before it asks.** `ToolDisclosure` builds, for every tool
+  call, one line saying what is sent and to whom: the Google tool's card reads *"Sends only
+  these search words to Google (www.googleapis.com), under your own API key. Nothing else from
+  this chat is sent."*, an HTTPS tool's names the host it was set up with, and a built-in's says
+  *"Nothing leaves this device."* The *leaves this device* badge now shows for the Google tool
+  as well — before, only HTTPS tools carried it. Nothing is sent until **Allow once** or
+  **Always allow** is tapped, which was already true.
+- **Settings › Privacy › Where your data goes.** Seven rows — conversations, model inference,
+  third-party AI services (*none*, naming OpenAI, Anthropic, Google, Meta and Microsoft),
+  model downloads (`huggingface.co`), the Google search tool (`googleapis.com`), HTTPS tools,
+  and a link to the privacy policy. The pane's subtitle now says *"Nothing you type is sent to
+  any AI service."*
+- **The iPhone shows the bytes-sent counter.** The notes and the privacy policy both promised
+  a live count on the Privacy page; the Mac had it as a stat card and the iPhone layout had
+  dropped it. A reviewer checking that claim would have found nothing. It is a row now.
+- **The catalogue footer** adds: *"A downloaded model runs on this device: nothing you type is
+  sent to Hugging Face, to the model's publisher, or to any AI service."*
+- **The generated-text notice** — welcome screen, empty chat, Settings › About — adds that
+  none of it is medical, legal or financial advice, so the app matches the new age-rating answer.
+- **`PRIVACY.md`** gains a *No third-party AI service* section, describes the card, and says
+  the same about advice. Last-updated is 11 September 2026. **The page at
+  `sotto.eonix.lk/privacy` is a separate Next.js repository** —
+  `/Volumes/Yasas Data/WebstormProjects/sotto-web`, `github.com/yasasalwis/sotto-web`,
+  deployed by Vercel from `main` — and `app/privacy/page.tsx` there was updated to match on
+  the branch `privacy-11-september`. It reaches the live page only when that branch is merged;
+  the reply says the policy is updated, so merge first.
+- Tests: six `ToolDisclosureTests` and a harness test that an HTTPS tool's card names the host
+  before anything runs. macOS 222 tests, iOS 219, all green on 11 September 2026.
+
+**Before replying, in this order:**
+
+- [ ] App Store Connect › App Information › Age Rating › **Edit** → *Health or Wellness
+      Topics*: **Yes** → Save. Confirm the shown rating is still 18+.
+- [ ] Push and merge the `privacy-11-september` branch of `sotto-web` (Vercel deploys `main`),
+      then check `https://sotto.eonix.lk/privacy` shows "Last updated 11 September 2026" and the
+      *No third-party AI service* heading.
+- [ ] Xcode Cloud build from this commit; remove the iOS version from review and add the new
+      build to it (build 16 does not have the disclosure).
+- [ ] Paste the iOS Notes text from section 4 over the Notes field (3,990 characters by
+      `wc -m`; the Notes field counts line breaks as one).
+- [ ] Add the THIRD-PARTY AI SERVICES paragraph to the macOS Notes field as well.
+- [ ] Reply on the Resolution Center thread with the text below (2,767 characters by
+      `wc -m`; Resolution Center counts line breaks as two, so it lands near
+      2,784). Then **Update Review** on the version page and
+      **Resubmit to App Review** on the submission page.
+
+#### iOS Resolution Center reply, 11 September 2026
+
+It claims the new build, the age-rating change and the republished policy, so send it only
+after all three are done.
+
+> Thank you for the review. Both items are addressed. A new build is attached, and the answers below are also in the App Review Information notes.
+>
+> GUIDELINE 2.3.6 - AGE RATING
+> "Health or Wellness Topics" is now set to Yes on the App Information page; the rating stays 18+. The notice shown on the welcome screen, the empty chat and Settings > About now also says that nothing a model writes is medical, legal or financial advice.
+>
+> GUIDELINES 5.1.1(i) AND 5.1.2(i) - THIRD-PARTY AI SERVICE
+> To confirm: Sotto does not send user data to a third-party AI service and does not include one. There is no AI API, SDK or server behind the app. Inference runs on the device through Apple's FoundationModels framework (the on-device model) and the bundled llama.cpp library; a conversation is never transmitted anywhere, and the app answers in Airplane Mode. The model catalogue names publishers such as Meta, Google, Microsoft, Alibaba and Mistral AI because their open-weight files are what a person downloads; those files are read as data on the device, and none of those companies receives anything from the app.
+>
+> The only requests the app can make, each started by the person, are: a model download from huggingface.co (the host is pinned in code); an optional weekly catalogue check that ships off; and two optional tools that ship off - a Google Programmable Search tool that needs the person's own API key, and HTTPS tools the person writes themselves. For those two tools, what leaves the device is the argument values the model chose, never the conversation.
+>
+> Even so, the attached build makes the disclosure explicit inside the app rather than only in the policy:
+> - The approval card shown before any networked tool runs now states what is sent and to whom, for example "Sends only these search words to Google (www.googleapis.com), under your own API key. Nothing else from this chat is sent." It carries a "leaves this device" badge, and nothing is sent until the person taps Allow. Built-in tools' cards say "Nothing leaves this device."
+> - Settings > Privacy has a new "Where your data goes" section listing where conversations, inference, third-party AI services (none), model downloads, the search tool and HTTPS tools each go, with a link to the privacy policy, and on iPhone a running count of the bytes the app has sent.
+> - The model catalogue states that a downloaded model runs on the device and that nothing typed is sent to Hugging Face, to the publisher, or to any AI service.
+>
+> The privacy policy at https://sotto.eonix.lk/privacy is updated to match: it identifies every case in which data leaves the device, what is sent, who receives it, and that no third-party AI service is involved.
+>
+> Source code, for verification: https://github.com/yasasalwis/Sotto
 
 ### Third round of TestFlight fixes, on build 1.0 (13)
 
@@ -748,22 +871,18 @@ build, and both will bite again if they are undone:
 
 ### Still outstanding
 
-- [ ] **The iPhone screen recording.** The one thing here that cannot be done from this Mac. Shot
-      list in section 4, "Shot list for the iPhone recording". macOS is done
-      (`Sotto-macOS-demo.mp4`, sent 4 September).
-- [ ] **Upload the new Xcode Cloud build and attach it to the iOS version** before replying — the
-      reply says the build carries both fixes, so it must. Remove the version from review first;
-      App Store Connect will not swap a build underneath a submission.
-- [ ] **Paste the iOS Notes text** from section 4 over what is in App Store Connect. The current
-      field still names Mac keyboard shortcuts that do not exist on iOS.
+- [ ] **Everything in the checklist under
+      [iOS rejected on build 1.0 (16)](#ios-rejected-on-build-10-16-8-september-2026)** — the
+      age-rating answer, the republished privacy page, the new build, both Notes fields, the
+      reply.
 - [ ] **Look at the iPhone screenshots again before replying.** Apple's *Prevent Common Issues*
       list calls out guideline 2.3.3: screenshots must show the app in use, "not merely the title
       art, login page, or splash screen". Sotto's welcome screen is the closest thing it has to a
       splash screen, and it is a plausible first screenshot. If one of the four is the welcome
       screen, replace it with a chat mid-answer, the model library, or the tools list. This cannot
       be checked from the repository — only in App Store Connect.
-- [ ] If review comes back asking about the age rating, the answers behind the 18+ override
-      are recorded in section 3.
+- [ ] **macOS.** Whatever its state, its Notes field should carry the THIRD-PARTY AI SERVICES
+      paragraph and its next build should be this commit, so the two platforms say the same thing.
 
 > **No version bump is needed.** `CURRENT_PROJECT_VERSION` is still `1` in the project and always
 > has been; Xcode Cloud sets the build number on upload, which is where 3, 5, 7 and 11 came from.

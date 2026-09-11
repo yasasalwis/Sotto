@@ -1,6 +1,6 @@
 # Privacy Policy — Sotto
 
-**Last updated: 3 September 2026**
+**Last updated: 11 September 2026**
 
 Sotto is a chat app that runs language models on your own device. It has no account, no
 server and no analytics. This policy describes every case in which data leaves your device,
@@ -12,6 +12,21 @@ which is a short list.
 statistics, no crash telemetry, no advertising, no tracking, no third-party SDKs that phone
 home. Your conversations are never transmitted to us, because there is no "us" to transmit
 them to — there is no Sotto server.
+
+## No third-party AI service
+
+Sotto does not send anything you type, attach or generate to any AI service, and it contains
+no AI API, SDK or server. Every answer is produced on your device:
+
+- **Apple Intelligence** runs through Apple's Foundation Models framework, which is the model
+  built into your device. Sotto uses the on-device model only.
+- **Downloaded and imported models** run through the bundled llama.cpp library on your device.
+
+The model catalog names publishers such as Meta, Google, Microsoft, Alibaba and Mistral AI
+because their open-weight model files are what you download. Those files are read as data on
+your device; none of those companies, and no other AI provider — OpenAI, Anthropic or anyone
+else — receives anything from Sotto. **Settings › Privacy › Where your data goes** repeats this
+inside the app, row by row.
 
 ## What Sotto stores, and where
 
@@ -55,15 +70,19 @@ There are exactly four paths that reach the network, and all four are started by
    the model chose are sent to Google's Custom Search API under *your* key. Google's handling
    of that request is governed by [Google's privacy
    policy](https://policies.google.com/privacy). Your conversation is not sent — only the
-   query. With **Ask every time** (the default) you see the exact query and approve it before
-   anything is sent.
+   query. With **Ask every time** (the default) a card in the chat shows the exact search
+   words, names Google and the address they go to (`www.googleapis.com`), and nothing is sent
+   until you tap **Allow**. Choosing **Always allow** on that card is what turns the prompt
+   off; you can turn it back on in the tool's settings.
 4. **An HTTPS tool you create yourself.** Sotto sends the request you configured, to the
    address you wrote, with the argument values the model chose. Sotto restricts these to
    `https` and percent-encodes argument values so a model cannot alter the address, but the
-   destination and what reaches it are your choice.
+   destination and what reaches it are your choice. The same card asks first, names the host,
+   and states that only the argument values shown are sent.
 
 **Settings › Privacy** shows a running count of the bytes Sotto has actually put on the
-network, so you can check this description against the app's behaviour.
+network, so you can check this description against the app's behaviour, and its **Where your
+data goes** section lists each of the cases above next to the address it reaches.
 
 ## What Sotto does not do
 
@@ -84,8 +103,10 @@ sees biometric data.
 ## Text that models generate
 
 Sotto does not review, filter or fact-check what a model writes. Models invent things, get
-facts wrong, and can produce text you did not ask for. Treat an answer as a draft and verify
-anything that matters. You are responsible for how you use text a model produces.
+facts wrong, and can produce text you did not ask for. A model will discuss health, legal or
+financial questions if you ask it to; nothing it writes is medical, legal or financial advice.
+Treat an answer as a draft and verify anything that matters. You are responsible for how you
+use text a model produces.
 
 Model weights you download or import are third-party works under their own licences, shown
 next to each model in the catalog.

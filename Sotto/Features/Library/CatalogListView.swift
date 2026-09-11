@@ -17,7 +17,7 @@ struct CatalogListView: View {
             ForEach(services.catalog.entries) { entry in
                 row(entry)
             }
-            Text("Downloads come straight from Hugging Face over HTTPS. Sotto sends only the request itself and counts those bytes on the Privacy page.")
+            Text("Downloads come straight from Hugging Face over HTTPS. Sotto sends only the request itself and counts those bytes on the Privacy page. A downloaded model runs on this device: nothing you type is sent to Hugging Face, to the model's publisher, or to any AI service.")
                 .font(Theme.Fonts.sans(12))
                 .foregroundStyle(Theme.Colors.faint)
                 .multilineTextAlignment(.center)

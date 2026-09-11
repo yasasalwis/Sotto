@@ -16,9 +16,12 @@ struct PendingToolApproval: Identifiable {
     let displayName: String
     let kind: ToolKind
     let argumentsSummary: String
-    /// What actually happens: the address to be called, or the command to be run.
-    let effect: String
+    /// What actually happens, what leaves the device, and where it goes.
+    let disclosure: ToolDisclosure
     let resolve: (ToolApprovalDecision) -> Void
+
+    /// One line describing the call: the address to be called, or the command to be run.
+    var effect: String { disclosure.effect }
 }
 
 /// Drives one conversation: composing, sending, streaming, retrying and switching models.
@@ -433,20 +436,7 @@ final class ChatSession: ToolRunner {
 
     private func requestApproval(for definition: ToolDefinition, call: ToolCallRequest) async -> ToolApprovalDecision {
         let arguments = ToolExecutor.decodeArguments(call.argumentsJSON)
-        let effect: String
-        switch definition.kind {
-        case .builtIn:
-            effect = "Runs on this device."
-        case .webSearch:
-            let query = ToolTemplate.stringValue(arguments["query"]) ?? ""
-            let site = definition.webSearchConfig?.site ?? ""
-            effect = "Search Google for “\(query)”" + (site.isEmpty ? "" : " on \(site)")
-        case .httpRequest:
-            let url = ToolTemplate.substitute(definition.httpConfig?.urlTemplate ?? "", arguments: arguments) { $0 }
-            effect = "\(definition.httpConfig?.method.uppercased() ?? "GET") \(url)"
-        case .shellCommand:
-            effect = ToolTemplate.substitute(definition.shellConfig?.command ?? "", arguments: arguments) { $0 }
-        }
+        let disclosure = ToolDisclosure.make(for: definition, arguments: arguments)
         return await withCheckedContinuation { continuation in
             let box = ApprovalBox(continuation)
             pendingToolApproval = PendingToolApproval(
@@ -455,7 +445,7 @@ final class ChatSession: ToolRunner {
                 displayName: definition.displayName,
                 kind: definition.kind,
                 argumentsSummary: ToolCallRecord(toolName: definition.name, displayName: definition.displayName, argumentsJSON: call.argumentsJSON).argumentsSummary,
-                effect: effect,
+                disclosure: disclosure,
                 resolve: { decision in box.resume(decision) }
             )
         }

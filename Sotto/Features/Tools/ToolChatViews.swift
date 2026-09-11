@@ -93,7 +93,7 @@ struct ToolApprovalCard: View {
                     MonoText(approval.toolName, size: 10, color: Theme.Colors.hint)
                 }
                 Spacer()
-                if approval.kind == .httpRequest {
+                if approval.disclosure.leavesDevice {
                     labelBadge("leaves this device", accent: false)
                 }
             }
@@ -112,6 +112,15 @@ struct ToolApprovalCard: View {
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.Colors.surfaceMuted, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            // What is sent and to whom, before the person decides. A built-in says nothing
+            // leaves; a networked tool names the host and says the arguments are all that goes.
+            Text(approval.disclosure.dataSentSummary)
+                .font(Theme.Fonts.sans(12))
+                .lineSpacing(3)
+                .foregroundStyle(approval.disclosure.leavesDevice ? Theme.Colors.muted : Theme.Colors.hint)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("tool.approval.dataSent")
             HStack(spacing: 8) {
                 Button("Allow once") { onDecision(.allowOnce) }
                     .buttonStyle(PrimaryButtonStyle(size: 13, horizontalPadding: 14, verticalPadding: 7))

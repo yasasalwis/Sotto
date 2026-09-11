@@ -352,9 +352,9 @@ struct PrivacyPane: View {
         @Bindable var settings = services.settings
         VStack(alignment: .leading, spacing: 30) {
             #if os(iOS)
-            PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads and tools you start. Everything below is off unless you turn it on.")
+            PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads and tools you start. Nothing you type is sent to any AI service. Everything below is off unless you turn it on.")
             #else
-            PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads you start. Everything below is off unless you turn it on.")
+            PaneHeader(title: "Privacy", subtitle: "Sotto makes no network requests except model downloads and tools you start. Nothing you type is sent to any AI service. Everything below is off unless you turn it on.")
             #endif
             SettingsGroup(title: platformNetworkTitle) {
                 #if os(iOS)
@@ -370,11 +370,18 @@ struct PrivacyPane: View {
                 SettingsRow(title: "Model catalog updates", detail: "Check Hugging Face weekly for new quantizations of the curated models.") {
                     Toggle("", isOn: $settings.catalogUpdates).toggleStyle(SottoToggleStyle()).labelsHidden()
                 }
-                SettingsRow(title: "Crash reports", detail: "Never enabled by default. Reports stay on this device; you review them in Advanced before sharing anything.", last: true) {
+                SettingsRow(title: "Crash reports", detail: "Never enabled by default. Reports stay on this device; you review them in Advanced before sharing anything.", last: !Self.showsBytesSentRow) {
                     Toggle("", isOn: $settings.crashReports).toggleStyle(SottoToggleStyle()).labelsHidden()
                         .onChange(of: settings.crashReports) { _, value in services.diagnostics.setEnabled(value) }
                 }
+                if Self.showsBytesSentRow {
+                    SettingsRow(title: "Data sent this month", detail: "Every byte Sotto has put on the network, counted by the app itself.", last: true) {
+                        MonoText(Format.bytes(settings.bytesSentThisMonth), size: 12, color: Theme.Colors.accent)
+                            .accessibilityIdentifier("privacy.bytesSent")
+                    }
+                }
             }
+            dataFlowGroup
             #if os(iOS)
             SettingsGroup(title: "On this device") {
                 SettingsRow(title: "Conversations") {
@@ -428,6 +435,47 @@ struct PrivacyPane: View {
         .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .json, defaultFilename: "Sotto export") { result in
             if case .failure(let error) = result {
                 services.state.showError("Export failed", error.localizedDescription)
+            }
+        }
+    }
+
+    /// The Mac shows the month's byte count as a stat card; the phone has no room for cards, so
+    /// it gets a row in the network group instead. Either way the number is on this page, which
+    /// is what the privacy policy promises.
+    private static var showsBytesSentRow: Bool {
+        #if os(iOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Where each kind of data goes, in the app rather than only in the policy. Every row is a
+    /// statement the code has to keep true: inference is on-device, the download host is pinned,
+    /// the search tool sends the query alone, and an HTTPS tool reaches only the address written.
+    private var dataFlowGroup: some View {
+        SettingsGroup(title: "Where your data goes") {
+            SettingsRow(title: "Conversations", detail: "Stay on this device. Sotto has no server and no account, so there is nowhere for them to go.") {
+                MonoText("this device", size: 12, color: Theme.Colors.accent)
+            }
+            SettingsRow(title: "Model inference", detail: "Apple Intelligence and every downloaded or imported model run on this device. Nothing you type is sent to Apple, to a model's publisher, or to anyone else.") {
+                MonoText("this device", size: 12, color: Theme.Colors.accent)
+            }
+            SettingsRow(title: "Third-party AI services", detail: "None. No conversation is ever sent to OpenAI, Anthropic, Google, Meta, Microsoft or any other AI provider.") {
+                MonoText("none", size: 12, color: Theme.Colors.accent)
+                    .accessibilityIdentifier("privacy.thirdPartyAI")
+            }
+            SettingsRow(title: "Model downloads", detail: "Only when you tap Download: the request for that file goes to Hugging Face. It carries nothing about you or your chats.") {
+                MonoText("huggingface.co", size: 12)
+            }
+            SettingsRow(title: "Google search tool", detail: "Off until you add your own API key. When a model uses it, the search words it chose go to Google, and it asks you first.") {
+                MonoText("googleapis.com", size: 12)
+            }
+            SettingsRow(title: "HTTPS tools you create", detail: "The argument values a model chooses go to the address you wrote, and only there.") {
+                MonoText("your address", size: 12)
+            }
+            SettingsRow(title: "Privacy policy", detail: "The full description, including every case in which data leaves the device.", last: true) {
+                LinkRow("Open", url: AppLinks.privacyPolicy)
             }
         }
     }
