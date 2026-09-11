@@ -748,6 +748,11 @@ browser, in this order:
    set *Distribution Preparation* to **None** temporarily — remember to set it back to *App Store
    Connect*, or the next macOS release will produce a green build that never reaches App Store
    Connect (see [Xcode Cloud](#xcode-cloud)).
+
+   **Done at 1:28 PM on 11 September:** *Archive - macOS* → *Distribution Preparation* = **None**
+   in the *Default* workflow, so pushes go green again while the 1.0 train is closed. **This
+   must be put back to *App Store Connect* before the next macOS release**, together with the
+   version bump — a green build with *None* uploads nothing.
 4. **Notes field.** The 3,990-character draft showed as **7 over** in App Store Connect's own
    counter, so the opening sentence was shortened to "Guideline 2.1 answers follow, numbered as
    asked." — 10 to spare. Saved.
@@ -910,6 +915,10 @@ so the instructions travel with the build instead of living only in this file.
 Workflow **Default** builds `main` from `github.com/yasasalwis/Sotto`, with two actions,
 Archive - iOS and Archive - macOS. Two things had to be fixed before it produced a usable
 build, and both will bite again if they are undone:
+
+> **Since 11 September 2026, *Archive - macOS* has Distribution Preparation set to *None*** —
+> macOS 1.0 is approved, its train is closed, and every macOS 1.0 upload was failing. Set it back
+> to *App Store Connect* when `MARKETING_VERSION` is bumped for the next macOS release.
 
 1. **`ci_scripts/ci_post_clone.sh`** vendors llama.cpp. `Packages/LlamaKit/llama.xcframework`
    is git-ignored, so a fresh clone has nothing behind LlamaKit's `llama` binary target and
