@@ -378,7 +378,7 @@ earlier iOS notes inherited "(⇧⌘L)", "(⇧⌘P)", "(⇧⌘K)" and "(⇧⌘T)
 class of mistake as the welcome-button wording above, and it sends a reviewer looking for
 something that is not there.
 
-#### iOS Notes field (3,990 of 4,000 characters, by `wc -m`)
+#### iOS Notes field (3,972 characters; App Store Connect counted the 3,990-character draft as 7 over)
 
 Rewritten on 11 September 2026 for the 8 September rejection: it opens with the third-party AI
 answer, declares the health topic, and names the approval card. Paste it over what is in App
@@ -674,17 +674,17 @@ on the device. They do now.
 
 **Before replying, in this order:**
 
-- [ ] App Store Connect › App Information › Age Rating › **Edit** → *Health or Wellness
+- [x] App Store Connect › App Information › Age Rating › **Edit** → *Health or Wellness
       Topics*: **Yes** → Save. Confirm the shown rating is still 18+.
-- [ ] Push and merge the `privacy-11-september` branch of `sotto-web` (Vercel deploys `main`),
+- [x] Push and merge the `privacy-11-september` branch of `sotto-web` (Vercel deploys `main`),
       then check `https://sotto.eonix.lk/privacy` shows "Last updated 11 September 2026" and the
       *No third-party AI service* heading.
-- [ ] Xcode Cloud build from this commit; remove the iOS version from review and add the new
+- [x] Xcode Cloud build from this commit; remove the iOS version from review and add the new
       build to it (build 16 does not have the disclosure).
-- [ ] Paste the iOS Notes text from section 4 over the Notes field (3,990 characters by
-      `wc -m`; the Notes field counts line breaks as one).
+- [x] Paste the iOS Notes text from section 4 over the Notes field (App Store Connect's own counter
+      is what matters: the 3,990-character draft showed as 7 over and was trimmed to 3,972).
 - [ ] Add the THIRD-PARTY AI SERVICES paragraph to the macOS Notes field as well.
-- [ ] Reply on the Resolution Center thread with the text below (2,767 characters by
+- [x] Reply on the Resolution Center thread with the text below (2,767 characters by
       `wc -m`; Resolution Center counts line breaks as two, so it lands near
       2,784). Then **Update Review** on the version page and
       **Resubmit to App Review** on the submission page.
@@ -712,6 +712,37 @@ after all three are done.
 > The privacy policy at https://sotto.eonix.lk/privacy is updated to match: it identifies every case in which data leaves the device, what is sent, who receives it, and that no third-party AI service is involved.
 >
 > Source code, for verification: https://github.com/yasasalwis/Sotto
+
+### Answered and resubmitted, 11 September 2026
+
+**iOS 1.0 went back to App Review on build 1.0 (18) at 12:29 PM and is Waiting for Review**, on
+the same submission `e925623c-04ee-408f-8329-2841869c4eb7`. Done from App Store Connect in the
+browser, in this order:
+
+1. **Age rating.** The questionnaire already had *Health or Wellness Topics* = **Yes** and *Medical
+   or Treatment Information* = Infrequent when opened, with the 18+ override in place and the
+   page's Save button disabled — nothing to change. The rejection was written against whatever
+   the questionnaire said on 8 September; if it was changed by hand between then and now, that
+   change is what the reply describes.
+2. **Privacy page.** `sotto-web` `main` at `f398c85`; Vercel had it live within a minute.
+3. **Build.** Commit `b3f1be0` pushed; Xcode Cloud build 18 started at 12:18 PM. **Archive - iOS
+   succeeded** and was processed by 12:21 PM. **Archive - macOS failed** at *Prepare Build for
+   App Store Connect* — the compile was clean and macOS 1.0 is already *Ready for Distribution*,
+   so nothing was needed from it; look at that action's logs before the next macOS submission.
+4. **Notes field.** The 3,990-character draft showed as **7 over** in App Store Connect's own
+   counter, so the opening sentence was shortened to "Guideline 2.1 answers follow, numbered as
+   asked." — 10 to spare. Saved.
+5. **Build swap.** On the version page the build row has a Delete control on hover; deleting 16
+   exposes *Add Build*, which listed 18 only after a page reload (it had shown 17 as newest a
+   minute earlier). Saved, and the sidebar flipped from *1.0 Rejected* to *1.0 Prepare for
+   Submission*.
+6. **Reply.** Posted on the thread at 12:28 PM from the submission page's *Reply to App Review*,
+   with 1,233 characters to spare.
+7. **Update Review** on the version page turned the item *Ready for Review*, which enabled
+   **Resubmit to App Review** on the submission page. Clicked; status *Waiting for Review*.
+
+**Not done:** the macOS Notes field does not carry the THIRD-PARTY AI SERVICES paragraph. macOS
+1.0 is approved, so it goes in with the next macOS version.
 
 ### Third round of TestFlight fixes, on build 1.0 (13)
 
